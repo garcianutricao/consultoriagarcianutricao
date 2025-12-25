@@ -1,0 +1,19 @@
+id,pergunta,tipo,opcoes,categoria
+peso,Peso Atual (kg),numero,,0. Dados Iniciais
+aderencia,3. Aderência ao plano alimentar:,radio,"Estou conseguindo seguir tudo tranquilamente|Consigo seguir tudo, mas às vezes passo por alguma dificuldade|Não consigo realizar tudo|Não estou conseguindo realizar nada",1. Comportamento
+aderencia_expl,Explicação (se houver dificuldade):,texto_longo,,1. Comportamento
+dedicacao,4. Nível de dedicação geral (dieta e hábitos):,radio,Dei o meu melhor|Me dediquei|Neutro|Poderia ter feito mais|Não me dediquei nada,1. Comportamento
+refeicoes_fora,5. Refeições fora do plano (última semana):,slider,0-10,1. Comportamento
+dias_alcool,6. Dias com consumo de álcool:,slider,0-7,1. Comportamento
+treino_forca,7. Treinos de força realizados (ex: musculação):,slider,0-7,2. Treinos
+treino_cardio,8. Treinos aeróbicos realizados (ex: esteira):,slider,0-7,2. Treinos
+disposicao,9. Disposição durante o dia:,radio,Muito disposto(a)|Geralmente disposto(a)|Depende do dia|Geralmente indisposto(a)|Zero disposição,3. Bem-estar
+estresse,10. Nível de estresse:,radio,Não estive estressado(a)|Um pouco estressado(a)|Constantemente estressado(a),3. Bem-estar
+ansiedade,11. Nível de ansiedade:,radio,Não senti ansiedade|Senti ansiedade em momentos específicos|Senti ansiedade de forma constante,3. Bem-estar
+rotina,12. Avaliação da rotina diária:,radio,"Bem estruturada e equilibrada|Um pouco desorganizada, mas consigo lidar|Muito desorganizada e me sinto sobrecarregado",4. Rotina e Corpo
+evolucao,13. Percepção de evolução corporal:,radio,Bastante evolução|Consigo notar evolução|Não noto evolução|Talvez esteja regredindo|Estou regredindo,4. Rotina e Corpo
+sono_qualidade,14. Qualidade do sono:,radio,Ótimo|Bom|Neutro|Ruim|Terrível,5. Sono
+sono_horas,15. Horas de sono (média):,slider,0-12,5. Sono
+alteracoes,16. Deseja alterações no cardápio?,texto_longo,,6. Finalização
+nps,17. Probabilidade de recomendação do meu serviço:,radio,Muito provável|Provável|Neutro|Improvável|Muito improvável,6. Finalização
+avaliacao_atend,18. Avaliação do atendimento (0-10):,slider,0-10,6. Finalização

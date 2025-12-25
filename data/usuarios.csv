@@ -1,0 +1,4 @@
+username,password,name,role,active,telefone,dia_checkin,frequencia,data_inicio
+jvgarcia08,Joaovictor90@,Garcia,admin,True,,Segunda,Semanal,
+teste3,123,Teste3,paciente,True,,Segunda,Semanal,2025-12-22
+123,123,123,paciente,True,,Segunda,Semanal,2025-12-23
