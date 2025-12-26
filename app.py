@@ -201,10 +201,25 @@ if not st.session_state["logado"]:
 # =======================================================
 else:
     with st.sidebar:
-        if caminho_logo: 
-            st.image(caminho_logo, width=130)
-        else: 
-            st.header("GN")
+        st.markdown("""
+            <div style="text-align: center; margin-bottom: 10px;">
+                <span style="
+                    font-family: 'Montserrat', sans-serif;
+                    font-weight: 900;
+                    font-size: 5rem; 
+                    background: linear-gradient(90deg, #FFFFFF, #00D4FF);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    filter: drop-shadow(0px 0px 15px rgba(0, 212, 255, 0.5));
+                    line-height: 1;
+                ">
+                    GN
+                </span>
+            </div>
+            <div style="text-align: center; color: #888; font-size: 0.8rem; margin-bottom: 20px;">
+                Garcia Nutrição
+            </div>
+        """, unsafe_allow_html=True)
             
         st.write(f"Olá, **{st.session_state['nome']}**!")
         st.write("")
