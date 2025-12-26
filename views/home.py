@@ -292,55 +292,10 @@ def show_home():
                 st.link_button("🔗 Acessar Minha Dieta", "https://app.dietitian.com.br/login?redirect_to=%2F", type="primary", use_container_width=True)
 
     st.markdown("---")
-
-    # Checklist Diário (Conectado ao DB)
-    st.subheader("✅ Checklist do Dia")
-    
-    df_check = carregar_checklist()
-    hoje_str = datetime.now().strftime("%Y-%m-%d")
-    
-    status = {"agua": False, "cardio": False, "treino": False, "dieta": False, "sono": False}
-    
-    # Verifica se já existe linha para hoje
-    if not df_check.empty and 'username' in df_check.columns:
-        linha_hoje = df_check[(df_check['username'] == login_usuario) & (df_check['data'] == hoje_str)]
-        
-        if not linha_hoje.empty:
-            for k in status.keys():
-                # Tratamento seguro para converter string "True"/"False" do banco
-                valor_banco = str(linha_hoje.iloc[0].get(k, "False"))
-                status[k] = valor_banco == "True"
-
-    c1, c2, c3 = st.columns(3)
-    
-    def criar_checkbox(label, chave_bd, col):
-        with col:
-            val = st.checkbox(label, value=status[chave_bd], key=f"chk_{chave_bd}")
-            if val != status[chave_bd]:
-                salvar_tarefa(login_usuario, chave_bd, val)
-                st.rerun()
-
-    criar_checkbox("💧 Xixi claro durante o dia", "agua", c1)
-    criar_checkbox("🏃 Cardio", "cardio", c2)
-    criar_checkbox("🥗 Dieta 100%", "dieta", c3)
-    criar_checkbox("🏋️ Treino", "treino", c2)
-    criar_checkbox("📵 Sono", "sono", c3)
-
-    total_feitos = sum(1 for v in status.values() if v)
-    total_itens = 5
-    progresso = total_feitos / total_itens
-    
-    st.progress(progresso, text=f"Você completou {total_feitos} de {total_itens} metas hoje!")
-    
-    if progresso == 1.0:
-        st.success("🎉 Parabéns! Dia perfeito!")
-
-    st.markdown("---")
-    
     # Atalhos
     col_calc, col_ebook = st.columns(2)
     with col_calc:
-        st.info("💡 **Dúvida no almoço?**")
+        st.info("💡 **Dúvida na refeição?**")
         st.button("🧮 Abrir Calculadora de Trocas", on_click=ir_para_calculadora, use_container_width=True) 
     with col_ebook:
         st.success("📚 **Quer ler algo?**")
