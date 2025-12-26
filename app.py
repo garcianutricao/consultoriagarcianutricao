@@ -4,41 +4,6 @@ import os
 # Importa o cérebro do banco de dados
 from database import carregar_dados, salvar_novo_registro
 
-# --- 🚑 KIT DE EMERGÊNCIA (APAGUE DEPOIS DE VALIDAR O ACESSO) ---
-with st.sidebar.expander("🆘 Resgate do Admin", expanded=False):
-    st.write("Use isto apenas se travar fora do sistema.")
-    
-    # 1. Botão para ver o que tem no banco
-    if st.checkbox("Ver Tabela de Usuários"):
-        df_users = carregar_dados("usuarios")
-        st.write("Colunas encontradas:", df_users.columns.tolist())
-        st.dataframe(df_users)
-
-    # 2. Botão para Recriar o Admin
-    if st.button("Forçar Criação de Admin"):
-        admin_resgate = {
-            "username": "admin",
-            "password": "123",
-            "name": "Admin Resgate",
-            "role": "admin",
-            "active": "True",
-            "data_inicio": "2025-12-25"
-        }
-        if salvar_novo_registro(admin_resgate, "usuarios"):
-            st.success("Admin recriado! Login: admin / Senha: 123")
-        else:
-            st.error("Erro ao salvar.")
-            
-    # 3. Botão para Consertar Colunas (Caso estejam em Português)
-    if st.button("Reparar Colunas (Login -> username)"):
-        from database import atualizar_tabela_completa
-        df = carregar_dados("usuarios")
-        # Renomeia se encontrar os nomes errados
-        df = df.rename(columns={"Login": "username", "Cargo": "role", "Ativo?": "active", "Senha": "password"})
-        atualizar_tabela_completa(df, "usuarios")
-        st.success("Colunas reparadas! Tente logar.")
-# -------------------------------------------------------
-
 # =======================================================
 # CONFIGURAÇÃO INICIAL E LOGO
 # =======================================================
