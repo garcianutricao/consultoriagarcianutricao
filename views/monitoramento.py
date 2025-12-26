@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import altair as alt
 from datetime import datetime
+from database import carregar_dados, salvar_novo_registro
 
 # --- CONFIGURAÇÃO ---
 ARQUIVO_BELISCADAS = "data/beliscadas.csv"
@@ -55,7 +56,7 @@ def exibir_visao_admin():
             return
 
         # Carregamos todos os registros para poder atualizar o status
-        df_all = pd.read_csv(ARQUIVO_BELISCADAS, dtype=str)
+        df_all = carregar_dados("beliscadas")
         df_paciente = df_all[df_all['username'] == sel_user].copy()
 
         if df_paciente.empty:
@@ -126,9 +127,24 @@ def exibir_visao_paciente():
                 "plano_futuro": plano_futuro,
                 "status": "Pendente" # Garante que o Admin receba o alerta
             }
-            salvar_beliscada_unica(dados)
-            st.success("Registro salvo! Analisaremos isso na nossa próxima consulta.")
-            st.balloons()
+            sucesso = salvar_novo_registro(dados, "beliscadas")
+
+            if sucesso:
+                st.success("✅ Registro salvo no Banco de Dados!")
+                st.balloons()
+                st.rerun()
+    st.divider()
+st.subheader("📜 Seu Histórico Recente")
+
+# Carrega do Banco
+df_historico = carregar_dados("beliscadas")
+
+if not df_historico.empty:
+    # Filtra só o usuário atual
+    df_seu = df_historico[df_historico["username"] == st.session_state["usuario_atual"]]
+    st.dataframe(df_seu, use_container_width=True, hide_index=True)
+else:
+    st.info("Nenhum registro encontrado.")
 
 # --- FUNÇÃO PRINCIPAL ---
 def show_monitoramento():

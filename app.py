@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import os
-
+from database import carregar_dados, salvar_novo_registro
 # Importando todas as views do sistema (INCLUINDO FINANCEIRO)
 from views import home, calculadora, biblioteca, perfil, admin, checkin, financeiro
+
+DATABASE_URL = st.secrets.get("DATABASE_URL")
 
 # =======================================================
 # CONFIGURAÇÃO INICIAL E LOGO
@@ -158,11 +160,8 @@ configurar_estilo_visual()
 # FUNÇÕES DE AUTENTICAÇÃO E DADOS
 # =======================================================
 def carregar_usuarios():
-    """Carrega o banco de dados de usuários."""
-    try:
-        return pd.read_csv("data/usuarios.csv", dtype=str)
-    except:
-        return pd.DataFrame()
+    """Carrega a tabela de usuários direto do PostgreSQL."""
+    return carregar_dados("usuarios")
 
 def login(u, s):
     """Verifica credenciais de login."""
