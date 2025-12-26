@@ -1,48 +1,30 @@
 import streamlit as st
 import pandas as pd
-import os
-import altair as alt
 from datetime import datetime
-from database import carregar_dados, salvar_novo_registro
-
-# --- CONFIGURAÇÃO ---
-ARQUIVO_BELISCADAS = "data/beliscadas.csv"
-ARQUIVO_USUARIOS = "data/usuarios.csv"
-
-# --- FUNÇÕES AUXILIARES ---
-def carregar_csv(caminho):
-    if not os.path.exists(caminho): return pd.DataFrame()
-    return pd.read_csv(caminho, dtype=str)
-
-def salvar_csv_completo(df, caminho):
-    """Salva o DataFrame inteiro (usado na revisão)"""
-    df.to_csv(caminho, index=False)
-
-def salvar_beliscada_unica(dados):
-    """Versão ultra-robusta para gravar novos registros (Append)"""
-    pasta = os.path.dirname(ARQUIVO_BELISCADAS)
-    if not os.path.exists(pasta):
-        os.makedirs(pasta)
-
-    df_novo = pd.DataFrame([dados])
-
-    if not os.path.exists(ARQUIVO_BELISCADAS):
-        df_novo.to_csv(ARQUIVO_BELISCADAS, index=False, encoding='utf-8')
-    else:
-        df_novo.to_csv(ARQUIVO_BELISCADAS, mode='a', header=False, index=False, encoding='utf-8')
+# IMPORTS DO BANCO DE DADOS
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 # --- VISÃO DO NUTRICIONISTA (ADMIN) ---
 def exibir_visao_admin():
-    """Lógica para o admin monitorar os 58 inscritos [cite: 2025-12-21]"""
+    """Lógica para o admin monitorar os 58 inscritos"""
     st.title("🕵️ Revisão de Beliscadas")
     
-    df_users = carregar_csv(ARQUIVO_USUARIOS)
+    # Carrega usuários do Banco
+    df_users = carregar_dados("usuarios")
+    
     if df_users.empty:
         st.warning("Nenhum usuário encontrado no sistema.")
         return
 
-    dict_nomes = dict(zip(df_users['username'], df_users['name']))
-    pacs_list = df_users[df_users['role'] == 'paciente']['username'].unique()
+    # Dicionário para mostrar nomes bonitos no selectbox
+    dict_nomes = {}
+    if 'username' in df_users.columns and 'name' in df_users.columns:
+        dict_nomes = dict(zip(df_users['username'], df_users['name']))
+        
+    # Filtra apenas pacientes
+    pacs_list = []
+    if 'role' in df_users.columns:
+        pacs_list = df_users[df_users['role'] == 'paciente']['username'].unique()
     
     sel_user = st.selectbox(
         "Selecione o paciente para analisar o comportamento:", 
@@ -51,12 +33,14 @@ def exibir_visao_admin():
     )
 
     if sel_user:
-        if not os.path.exists(ARQUIVO_BELISCADAS):
+        # Carregamos todos os registros do Banco
+        df_all = carregar_dados("beliscadas")
+        
+        if df_all.empty:
             st.info("Nenhum registro de beliscada encontrado até o momento.")
             return
 
-        # Carregamos todos os registros para poder atualizar o status
-        df_all = carregar_dados("beliscadas")
+        # Filtra visualização
         df_paciente = df_all[df_all['username'] == sel_user].copy()
 
         if df_paciente.empty:
@@ -68,10 +52,15 @@ def exibir_visao_admin():
             
             if not pendentes.empty:
                 st.warning(f"🔔 Existem {len(pendentes)} novos registros para revisar.")
-                if st.button(f"✅ Marcar registros de {dict_nomes.get(sel_user)} como Lidos", type="primary", use_container_width=True):
-                    # Atualiza o status no DataFrame principal onde o usuário coincide e está pendente
+                
+                if st.button(f"✅ Marcar registros de {dict_nomes.get(sel_user, sel_user)} como Lidos", type="primary", use_container_width=True):
+                    # Atualiza o status no DataFrame PRINCIPAL (df_all) e não na cópia
+                    # Localiza as linhas desse usuário que estão pendentes e muda para Revisado
                     df_all.loc[(df_all['username'] == sel_user) & (df_all['status'] == 'Pendente'), 'status'] = 'Revisado'
-                    salvar_csv_completo(df_all, ARQUIVO_BELISCADAS)
+                    
+                    # Salva a tabela inteira atualizada no Postgres
+                    atualizar_tabela_completa(df_all, "beliscadas")
+                    
                     st.success("Registros revisados com sucesso!")
                     st.rerun() # Recarrega para limpar os avisos
             else:
@@ -80,6 +69,11 @@ def exibir_visao_admin():
             st.divider()
 
             # --- TABELA ESTILIZADA ---
+            # Ordena por data (se possível)
+            if 'data' in df_paciente.columns:
+                df_paciente['data_dt'] = pd.to_datetime(df_paciente['data'], errors='coerce')
+                df_paciente = df_paciente.sort_values('data_dt', ascending=False)
+
             st.dataframe(
                 df_paciente,
                 column_order=("data", "hora", "alimento", "gatilho", "sentimento", "plano_futuro"),
@@ -127,24 +121,34 @@ def exibir_visao_paciente():
                 "plano_futuro": plano_futuro,
                 "status": "Pendente" # Garante que o Admin receba o alerta
             }
+            # SALVA NO BANCO
             sucesso = salvar_novo_registro(dados, "beliscadas")
 
             if sucesso:
                 st.success("✅ Registro salvo no Banco de Dados!")
                 st.balloons()
                 st.rerun()
+    
+    # --- HISTÓRICO (Agora dentro da função correta) ---
     st.divider()
-st.subheader("📜 Seu Histórico Recente")
+    st.subheader("📜 Seu Histórico Recente")
 
-# Carrega do Banco
-df_historico = carregar_dados("beliscadas")
+    # Carrega do Banco
+    df_historico = carregar_dados("beliscadas")
 
-if not df_historico.empty:
-    # Filtra só o usuário atual
-    df_seu = df_historico[df_historico["username"] == st.session_state["usuario_atual"]]
-    st.dataframe(df_seu, use_container_width=True, hide_index=True)
-else:
-    st.info("Nenhum registro encontrado.")
+    if not df_historico.empty:
+        # Filtra só o usuário atual
+        if 'username' in df_historico.columns:
+            df_seu = df_historico[df_historico["username"] == usuario_atual]
+            
+            # Ordena decrescente
+            if 'data' in df_seu.columns:
+                df_seu['data_dt'] = pd.to_datetime(df_seu['data'], errors='coerce')
+                df_seu = df_seu.sort_values('data_dt', ascending=False)
+            
+            st.dataframe(df_seu, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum registro encontrado.")
 
 # --- FUNÇÃO PRINCIPAL ---
 def show_monitoramento():

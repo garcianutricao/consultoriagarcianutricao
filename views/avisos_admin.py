@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime, timedelta
-
-ARQUIVO_AVISOS = "data/avisos.csv"
+# Importamos as funções do Banco de Dados
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 def show_enviar_avisos():
     st.title("📢 Enviar Avisos aos Pacientes")
@@ -20,24 +19,31 @@ def show_enviar_avisos():
             else:
                 # Agora calcula a expiração somando HORAS
                 expira = datetime.now() + timedelta(hours=horas)
+                
                 novo_dado = {
                     "mensagem": f"🚨Aviso: {msg_input}",
                     "expiracao": expira.strftime("%Y-%m-%d %H:%M:%S")
                 }
                 
-                # Proteção contra o EmptyDataError
-                if not os.path.exists(ARQUIVO_AVISOS) or os.path.getsize(ARQUIVO_AVISOS) == 0:
-                    pd.DataFrame([novo_dado]).to_csv(ARQUIVO_AVISOS, index=False)
+                # SALVA NO BANCO DE DADOS (POSTGRESQL)
+                if salvar_novo_registro(novo_dado, "avisos"):
+                    st.success(f"Aviso publicado! Ele ficará ativo por {horas} hora(s).")
+                    st.balloons()
                 else:
-                    df = pd.read_csv(ARQUIVO_AVISOS)
-                    df = pd.concat([df, pd.DataFrame([novo_dado])], ignore_index=True)
-                    df.to_csv(ARQUIVO_AVISOS, index=False)
-                
-                st.success(f"Aviso publicado! Ele ficará ativo por {horas} hora(s).")
-                st.balloons()
+                    st.error("Erro ao salvar aviso no banco.")
 
-    if os.path.exists(ARQUIVO_AVISOS) and os.path.getsize(ARQUIVO_AVISOS) > 0:
+    # Carrega os avisos atuais para decidir se mostra o botão de apagar
+    df_avisos = carregar_dados("avisos")
+    
+    if not df_avisos.empty:
         st.divider()
+        st.subheader("Avisos Ativos no Momento")
+        st.dataframe(df_avisos, use_container_width=True)
+        
         if st.button("🗑️ Apagar todos os avisos ativos"):
-            os.remove(ARQUIVO_AVISOS)
+            # Para "apagar" no banco, nós salvamos uma tabela vazia por cima
+            df_limpo = pd.DataFrame(columns=["mensagem", "expiracao"])
+            atualizar_tabela_completa(df_limpo, "avisos")
+            
+            st.success("Todos os avisos foram apagados do Banco de Dados.")
             st.rerun()

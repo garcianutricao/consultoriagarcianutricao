@@ -2,48 +2,48 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, date
+# IMPORTS DO BANCO DE DADOS
+from database import carregar_dados, salvar_novo_registro
 
 # --- CONFIGURAÇÃO ---
-ARQUIVO_CHECKINS = "data/checkins.csv"
-ARQUIVO_USUARIOS = "data/usuarios.csv"
+# Mantemos apenas o arquivo de configuração das perguntas
 ARQUIVO_PERGUNTAS = "data/perguntas_checkin.csv"
 
 # --- FUNÇÕES ---
-def carregar_csv(caminho):
-    if not os.path.exists(caminho): return pd.DataFrame()
-    return pd.read_csv(caminho, dtype=str)
-
-def salvar_checkin(dados):
-    if not os.path.exists(ARQUIVO_CHECKINS):
-        df = pd.DataFrame(columns=dados.keys())
-        df.to_csv(ARQUIVO_CHECKINS, index=False)
-    else:
-        df = pd.read_csv(ARQUIVO_CHECKINS)
-        for col in dados.keys():
-            if col not in df.columns:
-                df[col] = "" 
-        df = pd.concat([df, pd.DataFrame([dados])], ignore_index=True)
-        df.to_csv(ARQUIVO_CHECKINS, index=False)
 
 def get_dados_paciente(username):
-    df = carregar_csv(ARQUIVO_USUARIOS)
+    # LÊ DO BANCO
+    df = carregar_dados("usuarios")
     if df.empty: return None
-    df['username'] = df['username'].astype(str).str.strip()
-    user = df[df['username'] == str(username).strip()]
-    if user.empty: return None
-    return user.iloc[0].to_dict()
+    
+    # Tratamento seguro de strings
+    if 'username' in df.columns:
+        df['username_clean'] = df['username'].astype(str).str.strip().str.lower()
+        busca = str(username).strip().lower()
+        
+        user = df[df['username_clean'] == busca]
+        if user.empty: return None
+        return user.iloc[0].to_dict()
+    return None
 
 def get_historico_checkins(username):
-    df = carregar_csv(ARQUIVO_CHECKINS)
+    # LÊ DO BANCO
+    df = carregar_dados("checkins")
     if df.empty: return pd.DataFrame()
-    return df[df['username'] == username]
+    
+    if 'username' in df.columns:
+        return df[df['username'] == username]
+    return pd.DataFrame()
 
 def renderizar_campo(row, prefixo=""):
     """Gera o componente visual com chave única para evitar erros de ID"""
     tipo = str(row['tipo']).lower().strip()
     label = row['pergunta']
     id_campo = f"{prefixo}{row['id']}" # Chave única
-    opcoes = str(row['opcoes']).split("|") if pd.notnull(row['opcoes']) and row['opcoes'] else []
+    
+    opcoes = []
+    if pd.notnull(row['opcoes']) and str(row['opcoes']).strip():
+        opcoes = str(row['opcoes']).split("|")
     
     val = None
     if tipo == "texto_curto": val = st.text_input(label, key=id_campo)
@@ -57,7 +57,7 @@ def renderizar_campo(row, prefixo=""):
             try: max_val = int(opcoes[0].split("-")[1])
             except: pass
         val = st.slider(label, 0, max_val, 0, key=id_campo)
-    elif tipo == "escala (1-10)": # Adicionado suporte para o nome que estava na sua imagem
+    elif tipo == "escala (1-10)":
         val = st.slider(label, 1, 10, 5, key=id_campo)
     elif tipo == "sim/não":
         val = st.radio(label, ["Sim", "Não"], horizontal=True, key=id_campo)
@@ -95,7 +95,8 @@ def show_checkin():
             
             # Renderização idêntica ao paciente
             if 'categoria' in df_perguntas.columns:
-                for cat in sorted(df_perguntas['categoria'].unique()):
+                categorias = sorted(df_perguntas['categoria'].unique())
+                for cat in categorias:
                     st.markdown(f"### {cat}")
                     df_cat = df_perguntas[df_perguntas['categoria'] == cat]
                     for _, row in df_cat.iterrows():
@@ -148,14 +149,15 @@ def show_checkin():
                 motivo = f"⏳ **Aguarde!** Seu primeiro check-in será liberado em {periodo - dias_de_plano} dias."
                 mostrar_info_azul = False
         else:
-            df_checks['data_real'] = pd.to_datetime(df_checks['data'], errors='coerce')
-            ultimo_check = df_checks['data_real'].max().date()
-            dias_desde_ultimo = (hoje - ultimo_check).days
-            
-            periodo_trava = 6 if frequencia == "Semanal" else 13
-            if dias_desde_ultimo < periodo_trava:
-                bloqueado = True
-                motivo = f"✅ Você já realizou seu check-in {frequencia.lower()}!"
+            if 'data' in df_checks.columns:
+                df_checks['data_real'] = pd.to_datetime(df_checks['data'], errors='coerce')
+                ultimo_check = df_checks['data_real'].max().date()
+                dias_desde_ultimo = (hoje - ultimo_check).days
+                
+                periodo_trava = 6 if frequencia == "Semanal" else 13
+                if dias_desde_ultimo < periodo_trava:
+                    bloqueado = True
+                    motivo = f"✅ Você já realizou seu check-in {frequencia.lower()}!"
 
     if bloqueado:
         st.error(motivo)
@@ -186,11 +188,13 @@ def show_checkin():
             
             st.markdown("---")
             
-            # Renderiza perguntas (com suporte a categorias)
+            # Renderiza perguntas
             if 'categoria' in df_perguntas.columns:
-                for cat in sorted(df_perguntas['categoria'].unique()):
+                categorias = sorted(df_perguntas['categoria'].unique())
+                for cat in categorias:
                     st.subheader(cat)
-                    for _, row in df_perguntas[df_perguntas['categoria'] == cat].iterrows():
+                    df_cat = df_perguntas[df_perguntas['categoria'] == cat]
+                    for _, row in df_cat.iterrows():
                         respostas[row['id']] = renderizar_campo(row, prefixo="pac_")
                     st.markdown("---")
             else:
@@ -198,11 +202,14 @@ def show_checkin():
                     respostas[row['id']] = renderizar_campo(row, prefixo="pac_")
 
             if st.form_submit_button("✅ Enviar Relatório", type="primary", use_container_width=True):
-                # Validação básica de peso se a pergunta existir
+                # Validação básica
                 if 'peso' in respostas and (respostas['peso'] is None or float(respostas['peso']) <= 0):
                     st.warning("Por favor, preencha o seu peso atual corretamente.")
                 else:
-                    salvar_checkin(respostas)
-                    st.balloons()
-                    st.success("Relatório enviado com sucesso! Aguarde o feedback do seu nutricionista.")
-                    st.rerun()
+                    # SALVA NO BANCO POSTGRESQL
+                    if salvar_novo_registro(respostas, "checkins"):
+                        st.balloons()
+                        st.success("Relatório enviado com sucesso! Aguarde o feedback do seu nutricionista.")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar o check-in. Tente novamente.")

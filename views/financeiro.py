@@ -1,30 +1,17 @@
 import streamlit as st
 import pandas as pd
-import os
 import altair as alt
 from datetime import datetime, date
-
-# --- CONFIGURAÇÃO ---
-ARQUIVO_FINANCEIRO = "data/financeiro.csv"
-ARQUIVO_USUARIOS = "data/usuarios.csv"
+# IMPORTS DO BANCO DE DADOS
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 # --- FUNÇÕES ÚTEIS ---
-def carregar_dados():
-    if not os.path.exists(ARQUIVO_FINANCEIRO):
-        df = pd.DataFrame(columns=["data", "tipo", "categoria", "descricao", "valor"])
-        return df
-    return pd.read_csv(ARQUIVO_FINANCEIRO)
-
-def carregar_pacientes():
-    if not os.path.exists(ARQUIVO_USUARIOS):
-        return pd.DataFrame()
-    return pd.read_csv(ARQUIVO_USUARIOS, dtype=str)
-
-def salvar_dados(df):
-    df.to_csv(ARQUIVO_FINANCEIRO, index=False)
-
 def formatar_moeda(valor):
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    try:
+        val = float(valor)
+        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "R$ 0,00"
 
 # --- INTERFACE PRINCIPAL ---
 def show_financeiro():
@@ -62,7 +49,6 @@ def show_financeiro():
             
             if st.form_submit_button("💾 Confirmar Lançamento", type="primary", use_container_width=True):
                 if valor > 0:
-                    df_atual = carregar_dados()
                     novo = {
                         "data": str(data_lanc),
                         "tipo": tipo_clean,
@@ -70,51 +56,67 @@ def show_financeiro():
                         "descricao": descricao,
                         "valor": valor
                     }
-                    df_final = pd.concat([df_atual, pd.DataFrame([novo])], ignore_index=True)
-                    salvar_dados(df_final)
-                    st.success("Registrado com sucesso!")
-                    st.rerun()
+                    # SALVA NO BANCO POSTGRESQL
+                    if salvar_novo_registro(novo, "financeiro"):
+                        st.success("Registrado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar no banco.")
                 else:
                     st.warning("O valor deve ser maior que zero.")
 
-    # 2. PROCESSAMENTO DE DADOS
-    df = carregar_dados()
-    df_pacientes = carregar_pacientes()
+    # 2. PROCESSAMENTO DE DADOS (LENDO DO BANCO)
+    df = carregar_dados("financeiro")
+    df_pacientes = carregar_dados("usuarios")
     
     # Conta apenas pacientes (exclui admin)
     qtd_pacientes = 0
-    if not df_pacientes.empty:
+    if not df_pacientes.empty and 'role' in df_pacientes.columns:
         qtd_pacientes = len(df_pacientes[df_pacientes['role'] == 'paciente'])
 
     if df.empty:
         st.info("Comece lançando suas receitas e despesas acima para ver os gráficos.")
-        return
+        # Cria dataframe vazio com colunas certas para não quebrar o resto do código
+        df = pd.DataFrame(columns=["data", "tipo", "categoria", "descricao", "valor"])
 
-    df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
-    df['data'] = pd.to_datetime(df['data'], errors='coerce')
+    # Garante tipagem correta
+    if 'valor' in df.columns:
+        df['valor'] = pd.to_numeric(df['valor'], errors='coerce').fillna(0)
     
-    # Ordena por data (mais recente primeiro) e reseta o índice para facilitar exclusão
-    df = df.sort_values('data', ascending=False).reset_index(drop=True)
+    if 'data' in df.columns:
+        df['data'] = pd.to_datetime(df['data'], errors='coerce')
+        # Ordena por data (mais recente primeiro) e reseta o índice
+        df = df.sort_values('data', ascending=False).reset_index(drop=True)
 
     # Filtros
     col_filtro, col_vazio = st.columns([1, 3])
     with col_filtro:
-        df['mes_ano'] = df['data'].dt.strftime('%Y-%m')
-        meses = df['mes_ano'].unique().tolist()
+        if not df.empty and 'data' in df.columns:
+            df['mes_ano'] = df['data'].dt.strftime('%Y-%m')
+            meses = df['mes_ano'].unique().tolist()
+        else:
+            meses = []
         mes_selecionado = st.selectbox("📅 Filtrar Período:", ["Todos"] + meses)
 
     df_view = df.copy()
-    if mes_selecionado != "Todos":
+    if mes_selecionado != "Todos" and not df.empty:
         df_view = df[df['mes_ano'] == mes_selecionado]
 
     # 3. KPIs GERAIS ( Fluxo de Caixa )
-    receitas = df_view[df_view['tipo'] == 'Receita']['valor'].sum()
-    despesas = df_view[df_view['tipo'] == 'Despesa']['valor'].sum()
+    receitas = 0
+    despesas = 0
+    if not df_view.empty:
+        receitas = df_view[df_view['tipo'] == 'Receita']['valor'].sum()
+        despesas = df_view[df_view['tipo'] == 'Despesa']['valor'].sum()
     saldo = receitas - despesas
 
     # 4. CÁLCULO DE LTV e CAC (Considera SEMPRE o histórico todo)
-    receita_total_historica = df[df['tipo'] == 'Receita']['valor'].sum()
-    investimento_mkt_historico = df[(df['tipo'] == 'Despesa') & (df['categoria'] == 'Marketing/Ads')]['valor'].sum()
+    receita_total_historica = 0
+    investimento_mkt_historico = 0
+    
+    if not df.empty:
+        receita_total_historica = df[df['tipo'] == 'Receita']['valor'].sum()
+        investimento_mkt_historico = df[(df['tipo'] == 'Despesa') & (df['categoria'] == 'Marketing/Ads')]['valor'].sum()
     
     ltv = receita_total_historica / qtd_pacientes if qtd_pacientes > 0 else 0
     cac = investimento_mkt_historico / qtd_pacientes if qtd_pacientes > 0 else 0
@@ -177,52 +179,68 @@ def show_financeiro():
 
     with col_g2:
         st.subheader("Despesas por Categoria")
-        df_desp = df_view[df_view['tipo'] == 'Despesa']
-        if not df_desp.empty:
-            df_pie = df_desp.groupby('categoria')['valor'].sum().reset_index()
-            pie = alt.Chart(df_pie).mark_arc(innerRadius=60).encode(
-                theta=alt.Theta(field="valor", type="quantitative"),
-                color=alt.Color(field="categoria", type="nominal"),
-                tooltip=['categoria', 'valor']
-            )
-            st.altair_chart(pie, use_container_width=True)
-        else:
-            st.caption("Sem despesas registradas no período.")
+        if not df_view.empty:
+            df_desp = df_view[df_view['tipo'] == 'Despesa']
+            if not df_desp.empty:
+                df_pie = df_desp.groupby('categoria')['valor'].sum().reset_index()
+                pie = alt.Chart(df_pie).mark_arc(innerRadius=60).encode(
+                    theta=alt.Theta(field="valor", type="quantitative"),
+                    color=alt.Color(field="categoria", type="nominal"),
+                    tooltip=['categoria', 'valor']
+                )
+                st.altair_chart(pie, use_container_width=True)
+            else:
+                st.caption("Sem despesas registradas no período.")
 
-    # 7. TABELA DE EXTRATO
+    # 7. TABELA DE EXTRATO (COM EDIÇÃO DIRETA NO BANCO)
     st.subheader("📝 Extrato de Lançamentos")
-    df_edit = df_view.copy()
-    df_edit['data'] = df_edit['data'].dt.date
     
-    df_final_edit = st.data_editor(
-        df_edit[['data', 'tipo', 'categoria', 'descricao', 'valor']],
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-            "tipo": st.column_config.SelectboxColumn("Tipo", options=["Receita", "Despesa"]),
-            "categoria": st.column_config.SelectboxColumn("Categoria", options=[
-                "Consulta Avulsa", "Plano Mensal", "Plano Trimestral", "Renovação", 
-                "Marketing/Ads", "Ferramentas/Software", "Aluguel/Fixo", "Impostos", "Outros"
-            ])
-        }
-    )
+    if not df_view.empty:
+        df_edit = df_view.copy()
+        # Converte para data pura para o editor não mostrar hora
+        df_edit['data'] = df_edit['data'].dt.date
+        
+        # Colunas essenciais
+        cols = ['data', 'tipo', 'categoria', 'descricao', 'valor']
+        # Se o dataframe tem colunas extras do banco (id, etc), mantenha oculto se quiser, 
+        # mas precisamos garantir que estamos editando o df_view filtrado
+        
+        df_final_edit = st.data_editor(
+            df_edit[cols],
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+                "tipo": st.column_config.SelectboxColumn("Tipo", options=["Receita", "Despesa"]),
+                "categoria": st.column_config.SelectboxColumn("Categoria", options=[
+                    "Consulta Avulsa", "Plano Mensal", "Plano Trimestral", "Renovação", 
+                    "Marketing/Ads", "Ferramentas/Software", "Aluguel/Fixo", "Impostos", "Outros"
+                ]),
+                "data": st.column_config.DateColumn("Data", format="YYYY-MM-DD")
+            }
+        )
 
-    if st.button("💾 Salvar Alterações na Tabela"):
-        if mes_selecionado == "Todos":
-            salvar_dados(df_final_edit)
-            st.success("Tabela atualizada!")
-            st.rerun()
-        else:
-            st.warning("Para editar, selecione o filtro 'Todos' nos meses.")
+        if st.button("💾 Salvar Alterações na Tabela"):
+            if mes_selecionado == "Todos":
+                # Converte datas de volta para string para o banco
+                df_final_edit['data'] = df_final_edit['data'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+                
+                # ATUALIZA A TABELA INTEIRA NO BANCO
+                atualizar_tabela_completa(df_final_edit, "financeiro")
+                
+                st.success("Tabela Financeira sincronizada com o Banco!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Para editar ou excluir itens, por segurança, selecione o filtro 'Todos' nos meses.")
 
-    # 8. OPÇÃO DE EXCLUSÃO (NOVA)
+    # 8. OPÇÃO DE EXCLUSÃO (VIA INDEX)
     st.markdown("---")
     with st.expander("🗑️ Excluir Lançamento Específico"):
         if not df_view.empty:
-            st.warning("Cuidado: Esta ação não pode ser desfeita.")
+            st.warning("Cuidado: Esta ação remove o item do banco de dados.")
             
-            # Cria lista legível usando o índice original para garantir exclusão correta
+            # Cria lista legível
+            # Usamos o índice original do DataFrame para saber quem apagar
             opcoes_exclusao = df_view.apply(
                 lambda x: f"{x['data'].strftime('%d/%m/%Y')} | {x['tipo']} | {x['descricao']} | R$ {x['valor']:.2f}", 
                 axis=1
@@ -235,9 +253,16 @@ def show_financeiro():
             )
             
             if st.button("❌ Confirmar Exclusão do Lançamento"):
-                # Remove pelo índice
+                # Remove pelo índice do DataFrame filtrado
                 df_novo = df.drop(id_para_excluir)
-                salvar_dados(df_novo)
+                
+                # Converte datas antes de salvar
+                if 'data' in df_novo.columns:
+                    df_novo['data'] = df_novo['data'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+
+                # ATUALIZA BANCO
+                atualizar_tabela_completa(df_novo, "financeiro")
+                
                 st.success("Lançamento removido com sucesso!")
                 st.rerun()
         else:

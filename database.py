@@ -2,59 +2,83 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-# 1. Configuração da Conexão
+# ===================================================
+# 1. CONFIGURAÇÃO DA CONEXÃO
+# ===================================================
+
+# Pega o link secreto lá do .streamlit/secrets.toml (Local) ou da Nuvem
 DATABASE_URL = st.secrets.get("DATABASE_URL")
 
+# Correção necessária para o SQLAlchemy (O Railway usa 'postgres://' mas o Python quer 'postgresql://')
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Cria o motor de conexão
 engine = None
 if DATABASE_URL:
     try:
         engine = create_engine(DATABASE_URL)
     except Exception as e:
-        st.error(f"Erro ao conectar no banco: {e}")
+        st.error(f"Erro ao conectar no banco de dados: {e}")
 
-# 2. Função Genérica para Carregar Dados
+# ===================================================
+# 2. FUNÇÕES DE LEITURA E ESCRITA
+# ===================================================
+
 def carregar_dados(tabela):
-    """Lê uma tabela inteira do banco de dados"""
-    if engine is None: return pd.DataFrame()
+    """
+    Lê uma tabela inteira do banco de dados e retorna como DataFrame.
+    Se a tabela não existir (primeiro uso), retorna um DataFrame vazio.
+    """
+    if engine is None: 
+        return pd.DataFrame()
     
     try:
-        # Verifica se a tabela existe antes de tentar ler
+        # Abre uma conexão rápida apenas para verificar se a tabela existe
         with engine.connect() as conn:
-            # Essa query verifica tabelas no Postgres
+            # Comando específico do PostgreSQL para checar existência de tabela
             verificacao = text(f"SELECT to_regclass('public.{tabela}')")
             if conn.execute(verificacao).scalar() is None:
-                return pd.DataFrame() # Retorna vazio se a tabela não existir ainda
+                return pd.DataFrame() # Tabela não existe, retorna vazio
             
+        # Se existe, lê tudo
         return pd.read_sql_table(tabela, engine)
+    
     except Exception as e:
-        st.error(f"Erro ao ler tabela '{tabela}': {e}")
+        # Se der erro (ex: conexão caiu), retorna vazio para não travar o site
+        print(f"Erro silencioso ao ler '{tabela}': {e}") # Log no terminal
         return pd.DataFrame()
 
-# 3. Função Genérica para Salvar (Adicionar nova linha)
 def salvar_novo_registro(dados, tabela):
-    """Recebe um dicionário e salva como uma nova linha"""
+    """
+    Recebe um dicionário (ex: {'nome': 'Joao', 'idade': 25}) 
+    e salva como uma nova linha na tabela especificada.
+    """
     if engine is None: 
-        st.error("Banco de dados não conectado.")
+        st.error("Banco de dados não conectado. Verifique os Secrets.")
         return False
         
     try:
+        # Transforma o dicionário em uma linha de tabela (DataFrame)
         df_novo = pd.DataFrame([dados])
-        # 'if_exists="append"' cria a tabela se não existir ou adiciona se já existir
+        
+        # 'append': Adiciona ao final sem apagar o que já existe
         df_novo.to_sql(tabela, engine, if_exists='append', index=False)
         return True
+    
     except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
+        st.error(f"Erro ao salvar registro: {e}")
         return False
 
-# 4. Função para Atualizar Tabela Inteira (Para edições/exclusões)
 def atualizar_tabela_completa(df, tabela):
-    """Substitui a tabela inteira (usado no Admin para editar/excluir)"""
+    """
+    ⚠️ PERIGO: Substitui a tabela inteira do banco pelo DataFrame fornecido.
+    Usado quando editamos/excluímos usuários ou limpamos avisos.
+    """
     if engine is None: return
+    
     try:
-        # 'replace' apaga a antiga e escreve a nova
+        # 'replace': Apaga a tabela antiga e cria uma nova com os dados atuais
         df.to_sql(tabela, engine, if_exists='replace', index=False)
     except Exception as e:
-        st.error(f"Erro ao atualizar banco: {e}")
+        st.error(f"Erro ao atualizar banco de dados: {e}")

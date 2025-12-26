@@ -1,123 +1,154 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime, timedelta, date
-
-# --- ARQUIVOS DE DADOS ---
-ARQUIVO_VIDEOS = "data/videos.csv"
-ARQUIVO_CONCLUSAO = "data/conclusao_aulas.csv"
-ARQUIVO_CHECKLIST = "data/checklist_diario.csv"
-ARQUIVO_USUARIOS = "data/usuarios.csv" # Adicionado para ler configs do paciente
-ARQUIVO_CHECKINS = "data/checkins.csv" # Adicionado para verificar histórico
-ARQUIVO_AVISOS = "data/avisos.csv"
+# Importamos as funções vitais do banco de dados
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 # --- CALLBACKS DE NAVEGAÇÃO ---
 def ir_para_calculadora(): st.session_state["menu_opcao"] = "🧮 Calculadora"
 def ir_para_biblioteca(): st.session_state["menu_opcao"] = "📚 Biblioteca"
-def ir_para_checkin(): st.session_state["menu_opcao"] = "📝 Check-in" # Novo callback
+def ir_para_checkin(): st.session_state["menu_opcao"] = "📝 Check-in"
 
-# --- FUNÇÕES DE DADOS DE USUÁRIO (NOVAS) ---
-def carregar_csv_seguro(caminho):
-    if not os.path.exists(caminho): return pd.DataFrame()
-    return pd.read_csv(caminho, dtype=str)
+# --- FUNÇÕES DE DADOS DE USUÁRIO (MIGRADAS PARA DB) ---
 
 def get_dados_paciente(username):
-    df = carregar_csv_seguro(ARQUIVO_USUARIOS)
+    # Carrega tabela usuarios do banco
+    df = carregar_dados("usuarios")
     if df.empty: return None
-    df['username'] = df['username'].astype(str).str.strip()
-    user = df[df['username'] == str(username).strip()]
-    if user.empty: return None
-    return user.iloc[0].to_dict()
+    
+    # Procura o usuário (tratando minúsculas/espaços)
+    username = str(username).strip().lower()
+    
+    # Cria coluna temporária pra busca segura (caso o banco tenha sujeira)
+    if 'username' in df.columns:
+        df['user_clean'] = df['username'].astype(str).str.strip().str.lower()
+        user = df[df['user_clean'] == username]
+        
+        if user.empty: return None
+        return user.iloc[0].to_dict()
+    return None
 
 def ja_fez_checkin_recente(username):
-    df = carregar_csv_seguro(ARQUIVO_CHECKINS)
+    # Carrega tabela checkins do banco
+    df = carregar_dados("checkins")
     if df.empty: return False
-    
-    df['data_real'] = pd.to_datetime(df['data'], errors='coerce')
-    df_user = df[df['username'] == username].dropna(subset=['data_real'])
-    
-    if df_user.empty: return False
-    
-    ultima_data = df_user['data_real'].max().date()
-    hoje = datetime.now().date()
-    dias_desde = (hoje - ultima_data).days
-    
-    return dias_desde < 4 # Se fez há menos de 4 dias, conta como feito
 
-# --- FUNÇÕES DO CHECKLIST (MANTIDAS) ---
+    # Filtra pelo usuário
+    if 'username' in df.columns:
+        df_user = df[df['username'] == username].copy()
+        if df_user.empty: return False
+
+        # Converte data e vê a última
+        if 'data' in df_user.columns:
+            df_user['data'] = pd.to_datetime(df_user['data'], errors='coerce')
+            ultima_data = df_user['data'].max().date()
+            
+            hoje = datetime.now().date()
+            dias_desde = (hoje - ultima_data).days
+            
+            return dias_desde < 4 # Se fez há menos de 4 dias, retorna True
+    return False
+
+# --- FUNÇÕES DO CHECKLIST (AGORA NO BANCO) ---
 def carregar_checklist():
-    if not os.path.exists(ARQUIVO_CHECKLIST):
-        return pd.DataFrame(columns=["username", "data", "agua", "cardio", "treino", "dieta", "sono"])
-    try:
-        return pd.read_csv(ARQUIVO_CHECKLIST, dtype=str)
-    except:
-        return pd.DataFrame(columns=["username", "data", "agua", "cardio", "treino", "dieta", "sono"])
+    # Lê direto do Postgres
+    df = carregar_dados("checklist")
+    # Se vier vazio ou sem colunas, cria a estrutura padrão
+    colunas_padrao = ["username", "data", "agua", "cardio", "treino", "dieta", "sono"]
+    if df.empty:
+        return pd.DataFrame(columns=colunas_padrao)
+    return df
 
 def salvar_tarefa(usuario, tarefa, feito):
+    """Atualiza o checklist no banco de dados"""
     df = carregar_checklist()
     hoje = datetime.now().strftime("%Y-%m-%d")
+    
+    # Garante que as colunas existem (caso seja a primeira vez)
+    colunas_padrao = ["username", "data", "agua", "cardio", "treino", "dieta", "sono"]
+    for col in colunas_padrao:
+        if col not in df.columns:
+            df[col] = "False"
+
+    # Procura se já existe registro hoje
     filtro = (df['username'] == usuario) & (df['data'] == hoje)
     
+    novo_valor = "True" if feito else "False"
+
     if filtro.any():
+        # Se existe, atualiza a linha
         idx = df[filtro].index[0]
-        df.at[idx, tarefa] = "True" if feito else "False"
+        df.at[idx, tarefa] = novo_valor
     else:
-        nova_linha = {"username": usuario, "data": hoje, "agua": "False", "cardio": "False", "treino": "False", "dieta": "False", "sono": "False"}
-        nova_linha[tarefa] = "True" if feito else "False"
+        # Se não existe, cria nova linha
+        nova_linha = {
+            "username": usuario, 
+            "data": hoje, 
+            "agua": "False", "cardio": "False", "treino": "False", "dieta": "False", "sono": "False"
+        }
+        nova_linha[tarefa] = novo_valor
         df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
     
-    df.to_csv(ARQUIVO_CHECKLIST, index=False)
+    # Salva a tabela atualizada no banco
+    atualizar_tabela_completa(df, "checklist")
 
 def calcular_streak(usuario):
     df = carregar_checklist()
     if df.empty: return 0
+    
+    if 'username' not in df.columns: return 0
     df_user = df[df['username'] == usuario].copy()
     if df_user.empty: return 0
     
-    df_user['data'] = pd.to_datetime(df_user['data'])
-    df_user = df_user.sort_values('data', ascending=False)
-    colunas_tarefas = ["agua", "cardio", "treino", "dieta", "sono"]
-    
-    def fez_algo(row): return any(str(row[col]) == 'True' for col in colunas_tarefas)
-    
-    streak = 0
-    hoje = datetime.now().date()
-    ontem = hoje - timedelta(days=1)
-    datas_ativas = set()
-    
-    for idx, row in df_user.iterrows():
-        if fez_algo(row): datas_ativas.add(row['data'].date())
-            
-    current_check = hoje
-    if current_check not in datas_ativas: current_check = ontem 
-    
-    while current_check in datas_ativas:
-        streak += 1
-        current_check -= timedelta(days=1)
+    if 'data' in df_user.columns:
+        df_user['data'] = pd.to_datetime(df_user['data'])
+        df_user = df_user.sort_values('data', ascending=False)
         
-    return streak
+        colunas_tarefas = ["agua", "cardio", "treino", "dieta", "sono"]
+        
+        # Função auxiliar para verificar se fez pelo menos 1 coisa no dia
+        def fez_algo(row): 
+            return any(str(row.get(col, 'False')) == 'True' for col in colunas_tarefas)
+        
+        streak = 0
+        hoje = datetime.now().date()
+        ontem = hoje - timedelta(days=1)
+        datas_ativas = set()
+        
+        for idx, row in df_user.iterrows():
+            if fez_algo(row): datas_ativas.add(row['data'].date())
+                
+        current_check = hoje
+        # Se não fez hoje ainda, checa a partir de ontem para não zerar o streak
+        if current_check not in datas_ativas: current_check = ontem 
+        
+        while current_check in datas_ativas:
+            streak += 1
+            current_check -= timedelta(days=1)
+            
+        return streak
+    return 0
 
-# --- FUNÇÕES AUXILIARES VÍDEO (MANTIDAS) ---
+# --- FUNÇÕES AUXILIARES VÍDEO (MIGRADAS) ---
 def verificar_se_video_concluido(usuario, modulo_video):
-    if not os.path.exists(ARQUIVO_CONCLUSAO): return False
-    try:
-        df = pd.read_csv(ARQUIVO_CONCLUSAO)
+    df = carregar_dados("conclusao_aulas") # Nome da tabela no banco
+    if df.empty: return False
+    
+    if 'username' in df.columns and 'modulo' in df.columns:
         concluido = df[(df['username'] == usuario) & (df['modulo'] == modulo_video)]
         return not concluido.empty
-    except: return False
+    return False
 
 def marcar_video_concluido(usuario, modulo_video):
-    novo = {"username": usuario, "modulo": modulo_video, "data": str(datetime.now())}
-    if os.path.exists(ARQUIVO_CONCLUSAO):
-        try:
-            df = pd.read_csv(ARQUIVO_CONCLUSAO)
-            pd.concat([df, pd.DataFrame([novo])]).to_csv(ARQUIVO_CONCLUSAO, index=False)
-        except:
-            pd.DataFrame([novo]).to_csv(ARQUIVO_CONCLUSAO, index=False)
-    else:
-        pd.DataFrame([novo]).to_csv(ARQUIVO_CONCLUSAO, index=False)
+    novo = {
+        "username": usuario, 
+        "modulo": modulo_video, 
+        "data": str(datetime.now())
+    }
+    # Salva apenas o novo registro (mais eficiente que reescrever tudo)
+    salvar_novo_registro(novo, "conclusao_aulas")
 
-# --- POP-UP DE CHECK-IN (NOVO) ---
+# --- POP-UP DE CHECK-IN ---
 @st.dialog("🔔 Lembrete Importante")
 def popup_checkin():
     st.markdown("### Dia de check-in!")
@@ -135,20 +166,23 @@ def show_home():
     nome_usuario = st.session_state.get("nome", "Paciente")
     login_usuario = st.session_state.get("usuario_atual", "")
     
-    if os.path.exists(ARQUIVO_AVISOS) and os.path.getsize(ARQUIVO_AVISOS) > 0:
+    # 1. AVISOS (Carrega do Banco)
+    df_avisos = carregar_dados("avisos")
+    if not df_avisos.empty:
         try:
-            df_avisos = pd.read_csv(ARQUIVO_AVISOS)
             agora = datetime.now()
-        
-            for _, row in df_avisos.iterrows():
-                expira = datetime.strptime(row['expiracao'], "%Y-%m-%d %H:%M:%S")
-                # Só mostra o aviso se estiver dentro do prazo configurado
-                if agora < expira:
-                    st.error(row['mensagem']) # Exibe a tarja vermelha com "🚨Aviso: ..."
+            # Garante que as colunas existem
+            if 'expiracao' in df_avisos.columns and 'mensagem' in df_avisos.columns:
+                for _, row in df_avisos.iterrows():
+                    try:
+                        expira = pd.to_datetime(row['expiracao'])
+                        if agora < expira:
+                            st.error(row['mensagem'])
+                    except: pass
         except Exception:
-            pass # Ignora erros silenciosamente para não travar a home do paciente         
+            pass      
 
-    # 1. VERIFICAÇÃO DE CHECK-IN (NOVA LÓGICA INSERIDA AQUI)
+    # 2. LÓGICA DE COBRANÇA DE CHECK-IN
     info = get_dados_paciente(login_usuario)
     deve_cobrar = False
     
@@ -170,20 +204,20 @@ def show_home():
         eh_dia = (hoje_nome == dia_agendado)
         carencia_ok = False
         
-        # Verifica carência
-        df_checks = carregar_csv_seguro(ARQUIVO_CHECKINS)
+        # Verifica carência olhando no banco de checkins
+        df_checks = carregar_dados("checkins")
         fez_antes = False
         if not df_checks.empty:
-            if not df_checks[df_checks['username'] == login_usuario].empty:
-                fez_antes = True
+            if 'username' in df_checks.columns:
+                if not df_checks[df_checks['username'] == login_usuario].empty:
+                    fez_antes = True
         
         if not fez_antes: # Novato
             if frequencia == "Semanal" and dias_de_plano >= 7: carencia_ok = True
             elif frequencia == "Quinzenal" and dias_de_plano >= 15: carencia_ok = True
-        else: # Veterano (já passou carência)
+        else: # Veterano
             carencia_ok = True
 
-        # Se é o dia, passou da carência e não fez hoje
         if eh_dia and carencia_ok:
             if not ja_fez_checkin_recente(login_usuario):
                 deve_cobrar = True
@@ -194,14 +228,13 @@ def show_home():
             popup_checkin()
             st.session_state["popup_visto"] = True
         
-        # Aviso fixo também
         st.warning("📢 **Hoje é dia de Check-in!** Não esqueça de enviar seu relatório.")
         if st.button("👉 Ir para Check-in", type="primary"):
             st.session_state["menu_opcao"] = "📝 Check-in"
             st.rerun()
         st.markdown("---")
 
-    # 2. CONTEÚDO ORIGINAL DA HOME (MANTIDO)
+    # 3. CONTEÚDO DA HOME
     hora = datetime.now().hour
     saudacao = "Bom dia" if 5 <= hora < 12 else "Boa tarde" if 12 <= hora < 18 else "Boa noite"
     dias_foco = calcular_streak(login_usuario)
@@ -215,15 +248,16 @@ def show_home():
 
     st.markdown("---")
 
-    # Vídeo e Dieta (Lado a Lado)
+    # Vídeo e Dieta
     ja_viu = verificar_se_video_concluido(login_usuario, "Boas Vindas")
     dados_video = None
+    
+    # Tenta carregar vídeo do banco
     if not ja_viu:
-        try:
-            df_videos = pd.read_csv(ARQUIVO_VIDEOS)
+        df_videos = carregar_dados("videos")
+        if not df_videos.empty and 'modulo' in df_videos.columns:
             video_bv = df_videos[df_videos['modulo'] == 'Boas Vindas']
             if not video_bv.empty: dados_video = video_bv.iloc[0]
-        except: pass
 
     if dados_video is not None:
         col_video, col_dieta = st.columns(2, gap="medium")
@@ -231,7 +265,10 @@ def show_home():
             with st.container(border=True):
                 st.subheader("👋 Comece por aqui!")
                 st.caption(str(dados_video.get('descricao', 'Assista antes de começar.')))
-                st.video(dados_video['link'])
+                # Garante que tem link
+                link_video = dados_video.get('link', '')
+                if link_video:
+                    st.video(link_video)
                 if st.button("✅ Já assisti! (Ocultar)", type="primary", use_container_width=True):
                     marcar_video_concluido(login_usuario, "Boas Vindas")
                     st.rerun()
@@ -256,18 +293,23 @@ def show_home():
 
     st.markdown("---")
 
-    # Checklist Diário
+    # Checklist Diário (Conectado ao DB)
     st.subheader("✅ Checklist do Dia")
     
     df_check = carregar_checklist()
     hoje_str = datetime.now().strftime("%Y-%m-%d")
-    linha_hoje = df_check[(df_check['username'] == login_usuario) & (df_check['data'] == hoje_str)]
     
     status = {"agua": False, "cardio": False, "treino": False, "dieta": False, "sono": False}
     
-    if not linha_hoje.empty:
-        for k in status.keys():
-            status[k] = str(linha_hoje.iloc[0][k]) == "True"
+    # Verifica se já existe linha para hoje
+    if not df_check.empty and 'username' in df_check.columns:
+        linha_hoje = df_check[(df_check['username'] == login_usuario) & (df_check['data'] == hoje_str)]
+        
+        if not linha_hoje.empty:
+            for k in status.keys():
+                # Tratamento seguro para converter string "True"/"False" do banco
+                valor_banco = str(linha_hoje.iloc[0].get(k, "False"))
+                status[k] = valor_banco == "True"
 
     c1, c2, c3 = st.columns(3)
     

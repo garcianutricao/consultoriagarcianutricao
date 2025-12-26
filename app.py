@@ -1,25 +1,21 @@
 import streamlit as st
 import pandas as pd
 import os
+# Importa o cérebro do banco de dados
 from database import carregar_dados, salvar_novo_registro
-# Importando todas as views do sistema (INCLUINDO FINANCEIRO)
-from views import home, calculadora, biblioteca, perfil, admin, checkin, financeiro
 
-# --- 🚑 KIT DE EMERGÊNCIA (APAGUE DEPOIS DE ENTRAR) ---
-with st.sidebar.expander("🆘 Resgate do Admin", expanded=True):
-    st.write("Use isto se não conseguir logar.")
+# --- 🚑 KIT DE EMERGÊNCIA (APAGUE DEPOIS DE VALIDAR O ACESSO) ---
+with st.sidebar.expander("🆘 Resgate do Admin", expanded=False):
+    st.write("Use isto apenas se travar fora do sistema.")
     
-    # 1. Botão para ver o que tem no banco (Debug)
+    # 1. Botão para ver o que tem no banco
     if st.checkbox("Ver Tabela de Usuários"):
-        from database import carregar_dados
         df_users = carregar_dados("usuarios")
-        st.write("Colunas no Banco:", df_users.columns.tolist())
+        st.write("Colunas encontradas:", df_users.columns.tolist())
         st.dataframe(df_users)
 
     # 2. Botão para Recriar o Admin
     if st.button("Forçar Criação de Admin"):
-        from database import salvar_novo_registro
-        # Cria um admin novo garantido
         admin_resgate = {
             "username": "admin",
             "password": "123",
@@ -35,39 +31,31 @@ with st.sidebar.expander("🆘 Resgate do Admin", expanded=True):
             
     # 3. Botão para Consertar Colunas (Caso estejam em Português)
     if st.button("Reparar Colunas (Login -> username)"):
-        from database import carregar_dados, atualizar_tabela_completa
+        from database import atualizar_tabela_completa
         df = carregar_dados("usuarios")
         # Renomeia se encontrar os nomes errados
         df = df.rename(columns={"Login": "username", "Cargo": "role", "Ativo?": "active", "Senha": "password"})
         atualizar_tabela_completa(df, "usuarios")
         st.success("Colunas reparadas! Tente logar.")
-        
 # -------------------------------------------------------
-
-DATABASE_URL = st.secrets.get("DATABASE_URL")
 
 # =======================================================
 # CONFIGURAÇÃO INICIAL E LOGO
 # =======================================================
 def get_logo_path():
-    """Busca a logo em várias extensões possíveis para evitar erros."""
+    """Busca a logo em várias extensões possíveis."""
     caminhos = [
-        "assets/logo.png", 
-        "assets/logo.PNG",
-        "assets/logo.jpg", 
-        "assets/logo.JPG",
-        "assets/logo.jpeg", 
-        "assets/logo.JPEG"
+        "assets/logo.png", "assets/logo.PNG",
+        "assets/logo.jpg", "assets/logo.JPG",
+        "assets/logo.jpeg", "assets/logo.JPEG"
     ]
     for c in caminhos:
-        if os.path.exists(c):
-            return c
+        if os.path.exists(c): return c
     return None
 
 caminho_logo = get_logo_path()
 icone = caminho_logo if caminho_logo else "🍎"
 
-# Configuração da página deve ser a primeira chamada Streamlit
 st.set_page_config(
     page_title="Consultoria Garcia Nutrição",
     page_icon=icone,
@@ -75,7 +63,15 @@ st.set_page_config(
 )
 
 # =======================================================
-# CSS VISUAL (ESTILO COMPLETO)
+# IMPORTAÇÃO DAS VIEWS (PÁGINAS)
+# =======================================================
+# Importamos aqui para garantir que o set_page_config rode antes
+from views import home, calculadora, biblioteca, perfil, admin, checkin, financeiro
+import views.monitoramento as monitoramento
+from views.avisos_admin import show_enviar_avisos
+
+# =======================================================
+# CSS VISUAL (ESTILO PROFISSIONAL)
 # =======================================================
 def configurar_estilo_visual():
     st.markdown("""
@@ -85,24 +81,15 @@ def configurar_estilo_visual():
         @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 
         /* 2. CONFIGURAÇÃO GERAL DA PÁGINA */
-        .stApp {
-            background-color: #050A14 !important;
-        }
+        .stApp { background-color: #050A14 !important; }
         
-        /* 3. LIMPEZA TOTAL DE TEXTO (Remove contornos indesejados da calculadora) */
-        * {
-            text-shadow: none !important;
-            -webkit-text-stroke: 0px !important;
-        }
-
-        /* 4. TIPOGRAFIA PADRÃO */
+        /* 3. TIPOGRAFIA */
         html, body, p, h2, h3, h4, h5, h6, label, input, textarea, select, .stMarkdown, .stCaption, div {
             font-family: 'Inter', sans-serif !important;
             color: #E0E0E0 !important;
-            letter-spacing: normal !important;
         }
 
-        /* 5. TÍTULOS ESPECIAIS (H1 com Efeito Neon) */
+        /* 4. TÍTULOS ESPECIAIS (H1 com Efeito Neon) */
         h1 {
             font-family: 'Montserrat', sans-serif !important;
             background: linear-gradient(90deg, #FFFFFF, #00D4FF);
@@ -114,110 +101,74 @@ def configurar_estilo_visual():
             margin-bottom: 10px !important;
         }
         
-        /* Cores para subtítulos */
-        h2, h3 { 
-            color: #FFFFFF !important; 
-            font-weight: 700 !important; 
-        }
-
-        /* 6. CORREÇÃO DE ÍCONES DO MENU */
-        /* Garante que as setas do menu não virem texto */
-        button[kind="header"] span, [data-testid="stSidebarCollapseButton"] span, .material-icons, i {
-            font-family: 'Material Icons' !important;
-            font-style: normal !important;
-            font-weight: normal !important;
-            font-variant: normal !important;
-            text-transform: none !important;
-            line-height: 1 !important;
-            -webkit-font-smoothing: antialiased; 
-        }
-
-        /* 7. ESTILIZAÇÃO DOS CAMPOS DE INPUT (Calculadora e Login) */
-        label, .stTextInput label, .stSelectbox label, .stNumberInput label {
-            color: #FFFFFF !important;
-            font-weight: 500 !important;
-            font-size: 0.95rem !important;
-            letter-spacing: 0px !important;
-        }
-
+        /* 5. INPUTS E CAMPOS */
         .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stNumberInput input, .stTextArea textarea {
             background-color: #0F172A !important;
             color: white !important;
             border: 1px solid #334155 !important;
             border-radius: 6px !important;
-            box-shadow: none !important;
         }
         
-        /* Foco nos inputs (Borda Azul) */
-        .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
-            border-color: #00D4FF !important;
-        }
-
-        /* 8. BOTÕES ESTILIZADOS */
+        /* 6. BOTÕES */
         div.stButton > button {
             background-color: #007BFF !important;
             color: white !important;
             border: none !important;
             border-radius: 8px !important;
             font-weight: 600 !important;
-            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3) !important;
             transition: all 0.3s ease !important;
         }
-        
         div.stButton > button:hover {
             background-color: #00D4FF !important;
-            box-shadow: 0 6px 20px rgba(0, 212, 255, 0.6) !important;
             transform: translateY(-2px);
         }
-
-        /* Botão Secundário (Sair) */
         button[kind="secondary"] {
             background-color: transparent !important;
             border: 1px solid #FF4B4B !important;
             color: #FF4B4B !important;
-            box-shadow: none !important;
         }
 
-        /* 9. SIDEBAR (MENU LATERAL) */
+        /* 7. MENU LATERAL */
         [data-testid="stSidebar"] {
             background-color: #02040A !important;
             border-right: 1px solid #1E293B;
         }
         
-        /* 10. FORMULÁRIO INVISÍVEL (Para o Login funcionar com Enter) */
-        [data-testid="stForm"] {
-            border: none;
-            padding: 0;
-        }
+        /* 8. CORREÇÃO DE LOGIN COM ENTER */
+        [data-testid="stForm"] { border: none; padding: 0; }
         </style>
     """, unsafe_allow_html=True)
 
-# Aplica o estilo visual
 configurar_estilo_visual()
 
 # =======================================================
-# FUNÇÕES DE AUTENTICAÇÃO E DADOS
+# FUNÇÕES DE AUTENTICAÇÃO
 # =======================================================
-def carregar_usuarios():
-    """Carrega a tabela de usuários direto do PostgreSQL."""
-    return carregar_dados("usuarios")
-
 def login(u, s):
-    """Verifica credenciais de login."""
-    df = carregar_usuarios()
+    """Verifica credenciais no Banco de Dados."""
+    # Carrega tabela
+    df = carregar_dados("usuarios")
     if df.empty: return None
     
-    u = str(u).strip()
-    user = df[df['username'] == u]
+    # Tratamento de string para evitar erros de digitação
+    u_login = str(u).strip().lower()
+    s_login = str(s).strip()
     
-    if not user.empty:
-        dados = user.iloc[0]
-        # Verifica senha
-        if str(s).strip() == str(dados['password']):
-            # Verifica se está ativo
-            if str(dados.get('active','True')).lower() in ['true','1','yes']:
-                return dados.to_dict()
-            return "BLOQUEADO"
+    # Cria coluna auxiliar para busca
+    if 'username' in df.columns:
+        df['user_clean'] = df['username'].astype(str).str.strip().str.lower()
+        user = df[df['user_clean'] == u_login]
+        
+        if not user.empty:
+            dados = user.iloc[0]
+            # Verifica senha (exata)
+            if str(dados.get('password', '')).strip() == s_login:
+                # Verifica status (aceita várias formas de True)
+                status = str(dados.get('active', 'True')).lower()
+                if status in ['true', '1', 'yes', 'on']:
+                    return dados.to_dict()
+                else:
+                    return "BLOQUEADO"
     return None
 
 # Inicializa variáveis de sessão
@@ -236,37 +187,17 @@ if not st.session_state["logado"]:
         st.write("")
         st.write("")
         
-        # Exibe Logo ou GN Gigante
         if caminho_logo: 
             st.image(caminho_logo, width=180)
         else: 
-            st.markdown("""
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <span style="
-                        font-family: 'Montserrat', sans-serif;
-                        font-weight: 900;
-                        font-size: 8rem; 
-                        background: linear-gradient(90deg, #FFFFFF, #00D4FF);
-                        -webkit-background-clip: text;
-                        -webkit-text-fill-color: transparent;
-                        filter: drop-shadow(0px 0px 15px rgba(0, 212, 255, 0.5));
-                        line-height: 1;
-                        -webkit-text-stroke: 0px !important;
-                    ">
-                        GN
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown("<h1 style='text-align: center; font-size: 5rem;'>GN</h1>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### Consultoria Garcia Nutrição - Área de membros")
+        st.markdown("### Área de membros")
         
-        # Formulário para permitir login com "Enter"
         with st.form("login_form"):
             u = st.text_input("Usuário")
             s = st.text_input("Senha", type="password")
-            
-            # Botão de submissão do formulário
             submitted = st.form_submit_button("ENTRAR", type="primary", use_container_width=True)
             
             if submitted:
@@ -274,12 +205,11 @@ if not st.session_state["logado"]:
                 if res == "BLOQUEADO":
                     st.error("Sua conta está inativa. Contate o suporte.")
                 elif isinstance(res, dict):
-                    # Login com sucesso: Salva na sessão
                     st.session_state.update({
                         "logado": True,
-                        "usuario_atual": res['username'],
-                        "role": res['role'],
-                        "nome": res['name']
+                        "usuario_atual": res.get('username'),
+                        "role": res.get('role'),
+                        "nome": res.get('name')
                     })
                     st.rerun()
                 else:
@@ -290,35 +220,18 @@ if not st.session_state["logado"]:
 # =======================================================
 else:
     with st.sidebar:
-        # Logo no Menu
         if caminho_logo: 
             st.image(caminho_logo, width=130)
         else: 
-            st.markdown("""
-                <div style="margin-bottom: 20px;">
-                    <span style="
-                        font-size: 4rem; 
-                        font-weight: 900; 
-                        font-family: 'Montserrat', sans-serif; 
-                        color: #00D4FF; 
-                        text-shadow: 0px 0px 15px rgba(0, 212, 255, 0.4); 
-                        line-height: 1;
-                    ">
-                        GN
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-            st.sidebar.markdown("<div style='text-align: left; color: #CCCCCC; font-size: 15px; margin-top: -15px; margin-bottom: 20px; padding-left: 5px;'>""Consultoria Garcia Nutrição""</div>", unsafe_allow_html=True)
+            st.header("GN")
+            
         st.write(f"Olá, **{st.session_state['nome']}**!")
         st.write("")
         
         # --- MENU DE NAVEGAÇÃO ---
-        # A chave 'menu_opcao' permite que o botão da Home altere a página automaticamente
-        
         if st.session_state["role"] == "admin":
             st.caption("PAINEL GESTOR")
-            if "menu_opcao" not in st.session_state: 
-                st.session_state["menu_opcao"] = "Painel Admin"
+            if "menu_opcao" not in st.session_state: st.session_state["menu_opcao"] = "Painel Admin"
                 
             menu = st.radio(
                 "Menu", 
@@ -326,8 +239,7 @@ else:
                 key="menu_opcao"
             )
         else:
-            if "menu_opcao" not in st.session_state: 
-                st.session_state["menu_opcao"] = "🏠 Início"
+            if "menu_opcao" not in st.session_state: st.session_state["menu_opcao"] = "🏠 Início"
                 
             menu = st.radio(
                 "Menu", 
@@ -338,37 +250,21 @@ else:
         st.markdown("---")
         if st.button("Sair", type="secondary"):
             st.session_state["logado"] = False
-            # Limpa estado do menu ao sair
-            if "menu_opcao" in st.session_state: del st.session_state["menu_opcao"]
             st.rerun()
 
-    # --- ROTEAMENTO DAS PÁGINAS ---
-    # Admin
+    # --- ROTEAMENTO ---
+    # ADMIN
     if st.session_state["role"] == "admin":
-        if menu == "Painel Admin":
-            admin.show_admin()
-        elif menu == "💰 Financeiro":
-            financeiro.show_financeiro()
-        elif menu == "Visualizar Check-in":
-            checkin.show_checkin()
-        elif menu == "Monitorar beliscadas":
-            import views.monitoramento as monitoramento
-            monitoramento.show_monitoramento()
-        elif menu == "📢 Enviar Avisos":
-            from views.avisos_admin import show_enviar_avisos
-            show_enviar_avisos()
+        if menu == "Painel Admin": admin.show_admin()
+        elif menu == "💰 Financeiro": financeiro.show_financeiro()
+        elif menu == "Visualizar Check-in": checkin.show_checkin()
+        elif menu == "Monitorar beliscadas": monitoramento.show_monitoramento()
+        elif menu == "📢 Enviar Avisos": show_enviar_avisos()
     
-    # Paciente
-    elif menu == "🏠 Início":
-        home.show_home()
-    elif menu == "📝 Check-in":
-        checkin.show_checkin()
-    elif menu == "🍫 Beliscadas":
-        import views.monitoramento as monitoramento
-        monitoramento.show_monitoramento()
-    elif "Calculadora" in menu:
-        calculadora.show_calculadora()
-    elif "Biblioteca" in menu:
-        biblioteca.show_biblioteca()
-    elif "Perfil" in menu:
-        perfil.show_perfil()
+    # PACIENTE
+    elif menu == "🏠 Início": home.show_home()
+    elif menu == "📝 Check-in": checkin.show_checkin()
+    elif menu == "🍫 Beliscadas": monitoramento.show_monitoramento()
+    elif "Calculadora" in menu: calculadora.show_calculadora()
+    elif "Biblioteca" in menu: biblioteca.show_biblioteca()
+    elif "Perfil" in menu: perfil.show_perfil()

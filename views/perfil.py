@@ -1,26 +1,8 @@
 import streamlit as st
 import pandas as pd
 import time
-import os
-
-ARQUIVO_USUARIOS = "data/usuarios.csv"
-
-def carregar_usuarios():
-    try:
-        # Lê garantindo que tudo seja texto (string)
-        df = pd.read_csv(ARQUIVO_USUARIOS, dtype=str)
-        # Limpa espaços fantasmas
-        if not df.empty:
-            df['username'] = df['username'].str.strip()
-            df['password'] = df['password'].str.strip()
-            df['name'] = df['name'].str.strip()
-        return df
-    except:
-        return pd.DataFrame()
-
-def salvar_usuarios(df):
-    # Garante que salva sem o índice numérico (0, 1, 2...)
-    df.to_csv(ARQUIVO_USUARIOS, index=False)
+# IMPORTAÇÃO DO BANCO
+from database import carregar_dados, atualizar_tabela_completa
 
 def show_perfil():
     st.title("👤 Meu Perfil")
@@ -33,11 +15,15 @@ def show_perfil():
         st.error("Sessão expirada. Faça login novamente.")
         return
 
-    # Carrega dados
-    df = carregar_usuarios()
+    # Carrega dados do Banco
+    df = carregar_dados("usuarios")
     
+    # Verifica se a tabela está vazia ou se não tem a coluna username
+    if df.empty or 'username' not in df.columns:
+        st.error("Erro ao carregar dados do usuário.")
+        return
+
     # Filtra o usuário atual com segurança
-    # Verifica se o usuário existe no DataFrame
     filtro_usuario = df['username'] == usuario_atual
     
     if not filtro_usuario.any():
@@ -55,7 +41,7 @@ def show_perfil():
         st.subheader("Dados da Conta")
         
         with st.container(border=True):
-            nome_display = str(dados_usuario['name'])
+            nome_display = str(dados_usuario.get('name', 'Usuário'))
             iniciais = nome_display[:2].upper() if len(nome_display) >= 2 else "U"
             
             st.markdown(
@@ -80,7 +66,7 @@ def show_perfil():
             )
             
             st.text_input("Nome Completo", value=nome_display, disabled=True)
-            st.text_input("Usuário (Login)", value=dados_usuario['username'], disabled=True)
+            st.text_input("Usuário (Login)", value=dados_usuario.get('username', ''), disabled=True)
             
             status = str(dados_usuario.get('active', 'True')).lower()
             if status in ['true', '1', 'yes']:
@@ -107,8 +93,8 @@ def show_perfil():
                 btn_salvar = st.form_submit_button("🔄 Atualizar Senha", type="primary", use_container_width=True)
 
                 if btn_salvar:
-                    # Senha armazenada no CSV
-                    senha_real = str(dados_usuario['password']).strip()
+                    # Senha armazenada no Banco
+                    senha_real = str(dados_usuario.get('password', '')).strip()
                     senha_digitada = str(senha_atual_input).strip()
                     
                     # 1. Validações
@@ -122,13 +108,13 @@ def show_perfil():
                         st.error("A nova senha e a confirmação não batem.")
                         
                     else:
-                        # 2. ATUALIZAÇÃO SEGURA (USANDO .loc)
+                        # 2. ATUALIZAÇÃO SEGURA NO BANCO
                         try:
-                            # Acha a linha onde 'username' é igual ao usuario_atual e atualiza a coluna 'password'
+                            # Localiza e atualiza no DataFrame original
                             df.loc[df['username'] == usuario_atual, 'password'] = str(nova_senha).strip()
                             
-                            # Salva
-                            salvar_usuarios(df)
+                            # Salva a tabela inteira atualizada no PostgreSQL
+                            atualizar_tabela_completa(df, "usuarios")
                             
                             st.success("Senha alterada com sucesso! 🔒")
                             st.info("A página será recarregada em instantes...")
@@ -136,7 +122,7 @@ def show_perfil():
                             st.rerun()
                             
                         except Exception as e:
-                            st.error(f"Erro ao salvar: {e}")
+                            st.error(f"Erro ao salvar no banco: {e}")
 
     st.markdown("---")
     col_logout, _ = st.columns([1, 4])

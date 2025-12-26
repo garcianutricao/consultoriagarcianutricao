@@ -3,9 +3,10 @@ import pandas as pd
 import os
 
 # --- CONFIGURAÇÃO DO ARQUIVO ---
+# Mantemos o Excel pois é uma base de dados estática (apenas leitura)
 CAMINHO_TABELA = "data/tabela_alimentoseutaco.xlsx"
 
-# --- FUNÇÃO PARA TRADUZIR OS GRUPOS (CORRIGIDA) ---
+# --- FUNÇÃO PARA TRADUZIR OS GRUPOS ---
 def normalizar_grupo(nome_grupo):
     """
     Padroniza os nomes dos grupos do Excel para 4 categorias principais.
@@ -19,15 +20,15 @@ def normalizar_grupo(nome_grupo):
     if 'fruta' in g:
         return 'Fruta'
     
-    # 2. Gorduras (Adicionei 'gord', 'lip' e acentuações)
+    # 2. Gorduras
     elif any(x in g for x in ['gord', 'lip', 'oleo', 'óleo', 'azeite', 'castanha', 'noze', 'manteiga', 'amendoim']):
         return 'Gordura'
     
-    # 3. Proteínas (Prot, Carnes, Ovos...)
+    # 3. Proteínas
     elif any(x in g for x in ['prot', 'carne', 'ovo', 'ave', 'peixe', 'leite', 'queijo', 'frio', 'iogurte']):
         return 'Proteína'
     
-    # 4. Carboidratos (Carbo, Cereais, Massas...)
+    # 4. Carboidratos
     elif any(x in g for x in ['carbo', 'cereal', 'massa', 'pão', 'raiz', 'tuberculo', 'leguminosa', 'farinha', 'bisc', 'bolo']):
         return 'Carboidrato'
     
@@ -35,20 +36,20 @@ def normalizar_grupo(nome_grupo):
     else:
         return 'Outros'
 
-# --- CARREGAMENTO DE DADOS ---
+# --- CARREGAMENTO DE DADOS (COM CACHE) ---
 @st.cache_data
 def carregar_dados_alimentos():
     if not os.path.exists(CAMINHO_TABELA):
         return pd.DataFrame()
     
     try:
-        # Lê o Excel
+        # Lê o Excel usando openpyxl (engine padrão para xlsx)
         df = pd.read_excel(CAMINHO_TABELA, engine='openpyxl')
         
         # 1. Limpeza de colunas
         df.columns = df.columns.str.strip()
         
-        # 2. Renomeia colunas
+        # 2. Renomeia colunas para facilitar o código
         mapa_colunas = {
             'Alimento': 'alimento',
             'Grupo': 'grupo',
@@ -59,7 +60,7 @@ def carregar_dados_alimentos():
         }
         df = df.rename(columns=mapa_colunas)
         
-        # 3. Conversão Numérica
+        # 3. Conversão Numérica (Segurança contra textos escondidos nas colunas de números)
         cols_numericas = ['calorias', 'proteina', 'carboidrato', 'gordura']
         for col in cols_numericas:
             if col in df.columns:
@@ -68,15 +69,18 @@ def carregar_dados_alimentos():
         # 4. CRIAÇÃO DO GRUPO SIMPLIFICADO
         if 'grupo' in df.columns:
             df['grupo_display'] = df['grupo'].apply(normalizar_grupo)
-            # Remove "Outros" para não sujar o menu
+            # Remove "Outros" para não sujar o menu com alimentos irrelevantes
             df = df[df['grupo_display'] != 'Outros']
             
         return df
         
     except Exception as e:
-        st.error(f"Erro ao ler tabela: {e}")
+        st.error(f"Erro ao ler tabela nutricional: {e}")
         return pd.DataFrame()
 
+# ==========================================
+# VIEW DA CALCULADORA
+# ==========================================
 def show_calculadora():
     st.title("🧮 Calculadora de Substituição")
     st.caption("Planeje suas trocas mantendo o equilíbrio calórico.")
@@ -85,7 +89,7 @@ def show_calculadora():
     df_alimentos = carregar_dados_alimentos()
 
     if df_alimentos.empty:
-        st.error(f"⚠️ Erro ao carregar '{CAMINHO_TABELA}'. Verifique se o arquivo está na pasta data.")
+        st.error(f"⚠️ Erro ao carregar a tabela de alimentos. Verifique se o arquivo '{CAMINHO_TABELA}' está na pasta data e se a biblioteca 'openpyxl' está instalada.")
         return
 
     # --- INTERFACE ---
@@ -95,15 +99,14 @@ def show_calculadora():
         st.subheader("Alimento que tem na dieta")
         
         # 1. Filtra Grupos
-        # Define a ordem que você quer que apareça
         ordem_desejada = ['Carboidrato', 'Fruta', 'Gordura', 'Proteína']
-        grupos_no_excel = df_alimentos['grupo_display'].unique()
+        grupos_no_excel = df_alimentos['grupo_display'].unique() if 'grupo_display' in df_alimentos.columns else []
         
-        # Cria a lista final apenas com os grupos que realmente existem no seu Excel
+        # Cria a lista final apenas com os grupos que realmente existem
         grupos_finais = [g for g in ordem_desejada if g in grupos_no_excel]
         
         if not grupos_finais:
-            st.warning("Não foi possível identificar os grupos (Carbo, Prot, Gord, Fruta). Verifique a coluna 'Grupo' do seu Excel.")
+            st.warning("Não foi possível identificar os grupos. Verifique se o Excel tem a coluna 'Grupo'.")
             st.stop()
             
         grupo_sel = st.selectbox("Grupo Alimentar", options=grupos_finais)
