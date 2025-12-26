@@ -593,9 +593,24 @@ def show_admin():
         st.divider()
         st.subheader("🤝 Gestão de Parceiros & Cupons")
         
-        # 1. FORMULÁRIO DE ADIÇÃO (EM DESTAQUE)
-        with st.container(border=True):
-            st.markdown("##### ➕ Adicionar Novo Parceiro")
+        # 1. CARREGAMENTO DOS DADOS E CORREÇÃO DE ESQUEMA (AUTO-REPARO)
+        df_parc = carregar_dados("parceiros")
+        
+        # --- AQUI É A CORREÇÃO MÁGICA ---
+        # Força as colunas a existirem no DataFrame, mesmo que o banco não tenha
+        colunas_padrao = ["nome", "desconto", "cupom", "link", "ativo"]
+        for col in colunas_padrao:
+            if col not in df_parc.columns:
+                df_parc[col] = "" # Cria coluna vazia na memória
+        
+        # Limpeza das chaves {} estranhas
+        if not df_parc.empty:
+            for col in ["nome", "desconto", "cupom", "link"]:
+                if col in df_parc.columns:
+                    df_parc[col] = df_parc[col].astype(str).str.replace(r'[{}"\']', '', regex=True)
+
+        # 2. FORMULÁRIO DE ADIÇÃO
+        with st.expander("➕ Adicionar Novo Parceiro"):
             with st.form("form_add_parceiro", clear_on_submit=True):
                 c1, c2 = st.columns(2)
                 nome_p = c1.text_input("Nome da Loja")
@@ -606,35 +621,23 @@ def show_admin():
                 link_p = c4.text_input("Link do Site")
                 
                 if st.form_submit_button("Salvar Parceiro", type="primary"):
+                    # Só permite salvar se tivermos certeza que a tabela tem a estrutura certa
+                    # Por isso avisamos para clicar no Salvar Alterações primeiro se for a primeira vez
                     if nome_p:
                         novo_parc = {
-                            "nome": nome_p,
-                            "desconto": desc_p,
-                            "cupom": cupom_p,
-                            "link": link_p,
-                            "ativo": "True"
+                            "nome": nome_p, "desconto": desc_p, "cupom": cupom_p, 
+                            "link": link_p, "ativo": "True"
                         }
-                        salvar_novo_registro(novo_parc, "parceiros")
-                        st.success("Parceiro adicionado com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
+                        if salvar_novo_registro(novo_parc, "parceiros"):
+                            st.success("Parceiro adicionado com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Erro no Banco. Tente clicar no botão 'Salvar Alterações de Parceiros' abaixo primeiro para corrigir a tabela.")
                     else:
                         st.warning("O nome do parceiro é obrigatório.")
 
-        # 2. TABELA DE EDIÇÃO
-        df_parc = carregar_dados("parceiros")
-        
-        # Garante estrutura mínima
-        if df_parc.empty:
-            df_parc = pd.DataFrame(columns=["nome", "desconto", "cupom", "link", "ativo"])
-        else:
-            # Limpeza de possíveis sujeiras ({}) do banco
-            for col in ["nome", "desconto", "cupom", "link"]:
-                if col in df_parc.columns:
-                    # Remove { e } e " extras
-                    df_parc[col] = df_parc[col].astype(str).str.replace(r'[{}"\']', '', regex=True)
-
-        # Configura Tipagem para Edição
+        # 3. TABELA DE EDIÇÃO
         if 'ativo' in df_parc.columns:
             df_parc['ativo'] = df_parc['ativo'].astype(str).str.lower().isin(['true', '1', 'yes', 'on'])
 
@@ -653,15 +656,17 @@ def show_admin():
             key="editor_parceiros_tab"
         )
         
-        if st.button("💾 Salvar Alterações de Parceiros"):
+        if st.button("💾 Salvar Alterações de Parceiros (Clique aqui para Corrigir a Tabela)"):
             # Converte booleano de volta para string antes de salvar
             if 'ativo' in df_parc_ed.columns:
                 df_parc_ed['ativo'] = df_parc_ed['ativo'].apply(lambda x: 'True' if x is True else 'False')
             
+            # ISSO VAI RE-CRIAR A TABELA COM AS COLUNAS CERTAS (INCLUINDO CUPOM)
             atualizar_tabela_completa(df_parc_ed, "parceiros")
-            st.success("Lista de parceiros atualizada no Banco!")
+            st.success("Lista de parceiros atualizada e Banco corrigido!")
             time.sleep(1)
             st.rerun()
+            
     # --- ABA 6: AULAS (NO BANCO) ---
     with tab_vid:
         st.subheader("Aulas")
