@@ -155,7 +155,7 @@ if not st.session_state["logado"]:
         if caminho_logo: 
             st.image(caminho_logo, width=180)
         else: 
-            st.markdown("<h1 style='text-align: center; font-size: 5rem;'>GN</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 style='text-align: center; font-size: 12rem;'>GN</h1>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### Consultoria Garcia Nutrição - Área de membros")
