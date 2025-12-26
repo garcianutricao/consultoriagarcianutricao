@@ -531,13 +531,27 @@ def show_admin():
                 d_ini = c6.date_input("Início", date.today())
                 d_chk = st.selectbox("Dia Check-in", ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"])
                 if st.form_submit_button("Criar Paciente"):
-                    if u and u not in df_users_notify['username'].values:
-                        nv = {"username": u, "password": p, "name": n, "role": "paciente", "active": True, "telefone": t, "dia_checkin": d_chk, "frequencia": f, "data_inicio": str(d_ini)}
-                        df_o = carregar_csv(ARQUIVO_USUARIOS)
-                        salvar_csv(pd.concat([df_o, pd.DataFrame([nv])], ignore_index=True), ARQUIVO_USUARIOS)
-                        st.success("Criado!")
-                        st.rerun()
-                    else: st.error("Erro.")
+                    if u and p and n:
+                        novo_paciente = {
+                           "username": u.strip().lower(), # Converte para minúsculo (Fundamental!)
+                            "password": p.strip(),
+                            "name": n.strip(),
+                            "role": "paciente",
+                            "active": "True",
+                            "telefone": str(t),
+                            "dia_checkin": d_chk,
+                            "frequencia": f,
+                            "data_inicio": str(d_ini) # Converte a d 
+                        } 
+
+                        if salvar_novo_registro(novo_paciente, "usuarios"):
+                            st.success(f"Paciente {n} criado com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("Erro: Não foi possível criar. Verifique se o Login já existe.")    
+                else:
+                    st.warning("Por favor, preencha Nome, login e senha")
+                        
 
     # --- ABA 4: EDITOR ---
     with tab_editor:
