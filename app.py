@@ -5,6 +5,45 @@ from database import carregar_dados, salvar_novo_registro
 # Importando todas as views do sistema (INCLUINDO FINANCEIRO)
 from views import home, calculadora, biblioteca, perfil, admin, checkin, financeiro
 
+# --- 🚑 KIT DE EMERGÊNCIA (APAGUE DEPOIS DE ENTRAR) ---
+with st.sidebar.expander("🆘 Resgate do Admin", expanded=True):
+    st.write("Use isto se não conseguir logar.")
+    
+    # 1. Botão para ver o que tem no banco (Debug)
+    if st.checkbox("Ver Tabela de Usuários"):
+        from database import carregar_dados
+        df_users = carregar_dados("usuarios")
+        st.write("Colunas no Banco:", df_users.columns.tolist())
+        st.dataframe(df_users)
+
+    # 2. Botão para Recriar o Admin
+    if st.button("Forçar Criação de Admin"):
+        from database import salvar_novo_registro
+        # Cria um admin novo garantido
+        admin_resgate = {
+            "username": "admin",
+            "password": "123",
+            "name": "Admin Resgate",
+            "role": "admin",
+            "active": "True",
+            "data_inicio": "2025-12-25"
+        }
+        if salvar_novo_registro(admin_resgate, "usuarios"):
+            st.success("Admin recriado! Login: admin / Senha: 123")
+        else:
+            st.error("Erro ao salvar.")
+            
+    # 3. Botão para Consertar Colunas (Caso estejam em Português)
+    if st.button("Reparar Colunas (Login -> username)"):
+        from database import carregar_dados, atualizar_tabela_completa
+        df = carregar_dados("usuarios")
+        # Renomeia se encontrar os nomes errados
+        df = df.rename(columns={"Login": "username", "Cargo": "role", "Ativo?": "active", "Senha": "password"})
+        atualizar_tabela_completa(df, "usuarios")
+        st.success("Colunas reparadas! Tente logar.")
+        
+# -------------------------------------------------------
+
 DATABASE_URL = st.secrets.get("DATABASE_URL")
 
 # =======================================================
