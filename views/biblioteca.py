@@ -4,11 +4,10 @@ import pandas as pd
 import fitz  # PyMuPDF
 from streamlit_pdf_viewer import pdf_viewer
 # IMPORTAÇÃO DO BANCO
-from database import carregar_dados
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 # CONSTANTES
 PASTA_EBOOKS = "assets/ebooks"
-# ARQUIVO_PARCEIROS e ARQUIVO_VIDEOS foram removidos pois agora vêm do banco
 
 # --- CACHE DE ALTA RESOLUÇÃO ---
 @st.cache_data
@@ -68,6 +67,9 @@ def show_biblioteca():
     # MODO NAVEGAÇÃO
     # ==========================================
     st.title("📚 Materiais úteis.")
+    
+    # Verifica permissão para saber se mostra ferramentas de edição
+    eh_admin = st.session_state.get("role") == "admin"
     
     tab1, tab_videos, tab2 = st.tabs(["📖 Ebooks", "▶️ Aulas", "🏷️ Cupons de desconto"])
 
@@ -177,22 +179,55 @@ def show_biblioteca():
                                             st.caption(row['descricao'])
                                         st.write("") 
 
-    # --- ABA 3: PARCEIROS (Lê do Banco de Dados) ---
+    # --- ABA 3: PARCEIROS (Lê e Edita no Banco) ---
     with tab2:
         st.subheader("Descontos Exclusivos")
         
+        # 1. ÁREA DE CRIAÇÃO (SÓ PARA ADMIN)
+        if eh_admin:
+            with st.expander("➕ Adicionar Novo Parceiro", expanded=False):
+                with st.form("form_add_parceiro", clear_on_submit=True):
+                    c1, c2 = st.columns(2)
+                    nome_parceiro = c1.text_input("Nome da Loja/Parceiro")
+                    desconto_parceiro = c2.text_input("Desconto (Ex: 10% OFF)")
+                    
+                    c3, c4 = st.columns(2)
+                    cupom_parceiro = c3.text_input("Código do Cupom")
+                    link_parceiro = c4.text_input("Link do Site (Começar com https://)")
+                    
+                    if st.form_submit_button("Salvar Parceiro", type="primary"):
+                        if nome_parceiro and cupom_parceiro:
+                            novo_parc = {
+                                "nome": nome_parceiro,
+                                "desconto": desconto_parceiro,
+                                "cupom": cupom_parceiro,
+                                "link": link_parceiro,
+                                "ativo": "True" # Cria como ativo por padrão
+                            }
+                            salvar_novo_registro(novo_parc, "parceiros")
+                            st.success("Parceiro adicionado com sucesso!")
+                            st.rerun()
+                        else:
+                            st.warning("Preencha pelo menos o Nome e o Cupom.")
+            st.divider()
+
+        # 2. CARREGAMENTO DOS DADOS
         df_parceiros = carregar_dados("parceiros")
         
         if df_parceiros.empty:
              st.info("Nenhum parceiro cadastrado.")
         else:
-            try:
-                # Tratamento seguro para coluna 'ativo'
-                if 'ativo' in df_parceiros.columns:
-                    df_parceiros['ativo_str'] = df_parceiros['ativo'].astype(str).str.lower()
-                    df_filtrado = df_parceiros[df_parceiros['ativo_str'].isin(['true', '1', 'yes'])]
-                else:
-                    df_filtrado = df_parceiros # Se não tiver coluna ativo, mostra tudo
+            # Garante que as colunas existem para não dar erro
+            cols_necessarias = ['nome', 'desconto', 'cupom', 'link', 'ativo']
+            for col in cols_necessarias:
+                if col not in df_parceiros.columns:
+                    df_parceiros[col] = ""
+
+            # 3. MODO DE VISUALIZAÇÃO (PACIENTE)
+            if not eh_admin:
+                # Filtra apenas os ativos para o paciente
+                df_parceiros['ativo_str'] = df_parceiros['ativo'].astype(str).str.lower()
+                df_filtrado = df_parceiros[df_parceiros['ativo_str'].isin(['true', '1', 'yes'])]
                 
                 if df_filtrado.empty:
                     st.info("Nenhum parceiro ativo no momento.")
@@ -203,14 +238,39 @@ def show_biblioteca():
                             with c1: st.markdown("## 🏷️")
                             with c2:
                                 st.markdown(f"**{row.get('nome', 'Parceiro')}**")
-                                st.caption(row.get('descricao', ''))
+                                st.caption(f"Desconto: {row.get('desconto', '-')}")
                             with c3:
                                 cupom = row.get('cupom', '')
-                                if cupom and str(cupom) != 'nan':
-                                    st.code(cupom, language="text")
+                                st.code(cupom, language="text")
                                 
                                 link = row.get('link', '')
-                                if link and str(link) != "nan": 
+                                if link and str(link) != "nan" and str(link) != "": 
                                     st.link_button("Ir para Loja", link, use_container_width=True)
-            except Exception as e:
-                st.error(f"Erro ao carregar parceiros: {e}")
+            
+            # 4. MODO DE EDIÇÃO (ADMIN)
+            else:
+                st.write("📋 **Gerenciar Parceiros (Tabela Editável)**")
+                # Tratamento do checkbox ativo
+                df_parceiros['ativo'] = df_parceiros['ativo'].astype(str).str.lower().isin(['true', '1', 'yes', 'on'])
+                
+                df_editado = st.data_editor(
+                    df_parceiros,
+                    column_config={
+                        "nome": st.column_config.TextColumn("Nome"),
+                        "desconto": st.column_config.TextColumn("Desconto"),
+                        "cupom": st.column_config.TextColumn("Cupom"),
+                        "link": st.column_config.LinkColumn("Link"),
+                        "ativo": st.column_config.CheckboxColumn("Ativo?", default=True)
+                    },
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key="editor_parceiros"
+                )
+                
+                if st.button("💾 Salvar Alterações nos Parceiros"):
+                    # Converte booleano de volta para string
+                    df_editado['ativo'] = df_editado['ativo'].apply(lambda x: 'True' if x else 'False')
+                    
+                    atualizar_tabela_completa(df_editado, "parceiros")
+                    st.success("Lista de parceiros atualizada!")
+                    st.rerun()
