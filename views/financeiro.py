@@ -155,7 +155,7 @@ def show_financeiro():
         ticket_medio = s2.number_input("Valor Médio da Consulta/Plano (R$)", value=250.0, step=10.0)
         
         pacientes_necessarios = meta_fat / ticket_medio if ticket_medio > 0 else 0
-        st.info(f"🎯 Para faturar **{formatar_moeda(meta_fat)}**, você precisa de **{int(pacientes_necessarios)} pacientes** pagando {formatar_moeda(ticket_medio)}.")
+        st.info(f"🎯 Para faturar {formatar_moeda(meta_fat)}, você precisa de {int(pacientes_necessarios)} pacientes pagando {formatar_moeda(ticket_medio)}.")
 
     st.markdown("---")
 
