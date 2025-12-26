@@ -504,8 +504,8 @@ def show_admin():
                 if st.button("💾 Salvar Alterações"):
                     if 'data_inicio' in df_ed.columns:
                         df_ed['data_inicio'] = df_ed['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
-                    salvar_csv(df_ed, ARQUIVO_USUARIOS)
-                    st.success("Salvo!")
+                    atualizar_tabela_completa(df_ed, "usuarios")
+                    st.success("✅ Banco de Dados atualizado com sucesso!")
                     st.rerun()
 
             with st.expander("🗑️ Excluir Paciente"):
@@ -514,8 +514,8 @@ def show_admin():
                     df_nov = df_users_notify[df_users_notify['username'] != sel_del]
                     if 'data_inicio' in df_nov.columns:
                         df_nov['data_inicio'] = df_nov['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
-                    salvar_csv(df_nov, ARQUIVO_USUARIOS)
-                    st.success("Excluído.")
+                    atualizar_tabela_completa(df_nov, "usuarios")
+                    st.success(f"Usuário {sel_del} excluído do Banco!")
                     st.rerun()
 
             st.markdown("---")

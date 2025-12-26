@@ -5,6 +5,28 @@ from database import carregar_dados, salvar_novo_registro
 # Importando todas as views do sistema (INCLUINDO FINANCEIRO)
 from views import home, calculadora, biblioteca, perfil, admin, checkin, financeiro
 
+
+if st.sidebar.button("🔧 Reparar Colunas do Banco"):
+    from database import carregar_dados, atualizar_tabela_completa
+    
+    # 1. Carrega a tabela "estragada"
+    df = carregar_dados("usuarios")
+    
+    # 2. Renomeia de volta para o inglês (o padrão do sistema)
+    # Ajuste os nomes da esquerda conforme aparecem no seu print
+    df = df.rename(columns={
+        "Login": "username",
+        "Cargo": "role",
+        "Ativo?": "active",
+        "WhatsApp": "telefone" # Se tiver mudado esse também
+    })
+    
+    # 3. Grava a tabela corrigida por cima da errada
+    atualizar_tabela_completa(df, "usuarios")
+    st.success("✅ Banco reparado! As colunas voltaram para inglês.")
+    st.rerun()
+
+    
 DATABASE_URL = st.secrets.get("DATABASE_URL")
 
 # =======================================================
