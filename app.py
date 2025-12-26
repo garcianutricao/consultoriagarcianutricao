@@ -155,8 +155,24 @@ if not st.session_state["logado"]:
         if caminho_logo: 
             st.image(caminho_logo, width=180)
         else: 
-            st.markdown("<h1 style='text-align: center; font-size: 12rem;'>GN</h1>", unsafe_allow_html=True)
-        
+                # --- LOGO NEON GIGANTE (Login) ---
+                st.markdown("""
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <span style="
+                            font-family: 'Montserrat', sans-serif;
+                            font-weight: 900;
+                            font-size: 12rem; 
+                            background: linear-gradient(90deg, #FFFFFF, #00D4FF);
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                            filter: drop-shadow(0px 0px 25px rgba(0, 212, 255, 0.6));
+                            line-height: 1;
+                        ">
+                            GN
+                        </span>
+                    </div>
+                """, unsafe_allow_html=True)
+            
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### Consultoria Garcia Nutrição - Área de membros")
         
