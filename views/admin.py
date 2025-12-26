@@ -429,15 +429,21 @@ def show_admin():
     with tab_user:
             st.subheader("Gestão de Pacientes")
             
-            # TABELA EDITÁVEL
             if not df_users_notify.empty:
-                # Tratamento de datas e booleanos para não quebrar o editor
+                # --- PREPARAÇÃO DOS DADOS PARA EXIBIÇÃO ---
+                # 1. Tratamento de Data
                 if 'data_inicio' in df_users_notify.columns:
                     df_users_notify['data_inicio'] = pd.to_datetime(df_users_notify['data_inicio'], errors='coerce')
                 
-                # Garante que 'active' é booleano para o checkbox funcionar
+                # 2. Tratamento do Ativo (Para o Checkbox funcionar)
+                # Converte tudo para string minúscula e verifica se é 'true'
                 df_users_notify['active'] = df_users_notify['active'].astype(str).str.lower().isin(['true', '1', 'yes', 'on'])
-            
+                
+                # 3. Limpeza de Strings (Remove espaços extras nos nomes)
+                if 'username' in df_users_notify.columns:
+                    df_users_notify['username'] = df_users_notify['username'].astype(str).str.strip()
+
+                # --- EDITOR DE DADOS ---
                 df_ed = st.data_editor(
                     df_users_notify,
                     column_config={
@@ -447,84 +453,104 @@ def show_admin():
                         "data_inicio": st.column_config.DateColumn("Início", format="YYYY-MM-DD")
                     },
                     hide_index=True, num_rows="fixed", use_container_width=True,
-                    key="editor_usuarios" # Key única para não perder estado
+                    key="editor_usuarios_tabela"
                 )
                 
+                # --- BOTÃO DE SALVAR (EDIÇÃO) ---
                 if st.button("💾 Salvar Alterações na Tabela", type="primary"):
-                    # Converte data de volta para string antes de salvar no banco
-                    if 'data_inicio' in df_ed.columns:
-                        df_ed['data_inicio'] = df_ed['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+                    # PREPARAÇÃO PARA SALVAR (O PULO DO GATO)
+                    # O Banco não gosta de tipos misturados. Vamos converter tudo para String Pura.
                     
-                    # Converte booleano de volta para string 'True'/'False' pro banco
-                    df_ed['active'] = df_ed['active'].apply(lambda x: 'True' if x else 'False')
+                    df_salvar = df_ed.copy()
+                    
+                    # 1. Converte Data para String
+                    if 'data_inicio' in df_salvar.columns:
+                        df_salvar['data_inicio'] = df_salvar['data_inicio'].apply(
+                            lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and x != "" else None
+                        )
+                    
+                    # 2. Converte Booleano (Checkbox) para String 'True'/'False'
+                    df_salvar['active'] = df_salvar['active'].apply(lambda x: 'True' if x is True else 'False')
 
-                    # SALVA NO BANCO
-                    atualizar_tabela_completa(df_ed, "usuarios")
+                    # 3. Salva no Banco (Substitui a tabela inteira)
+                    atualizar_tabela_completa(df_salvar, "usuarios")
+                    
                     st.success("✅ Banco de Dados atualizado com sucesso!")
                     time.sleep(1)
                     st.rerun()
 
-            # EXCLUSÃO DE PACIENTE
+            # --- EXCLUSÃO DE PACIENTE ---
             with st.expander("🗑️ Excluir Paciente"):
                 if not df_users_notify.empty:
-                    # Lista apenas pacientes
+                    # Lista apenas quem é paciente
                     lista_pacs = df_users_notify[df_users_notify['role']=='paciente']['username'].unique() if 'role' in df_users_notify.columns else []
                     
-                    sel_del = st.selectbox("Excluir quem?", lista_pacs, key="select_delete")
-                    
-                    if st.button("❌ Confirmar Exclusão", key="btn_delete"):
-                        # Cria novo DF sem o usuário deletado
-                        df_nov = df_users_notify[df_users_notify['username'] != sel_del].copy()
+                    if len(lista_pacs) > 0:
+                        sel_del = st.selectbox("Selecione o usuário para EXCLUIR:", lista_pacs, key="sel_del_user")
                         
-                        # Tratamento de dados antes de salvar
-                        if 'data_inicio' in df_nov.columns:
-                            df_nov['data_inicio'] = df_nov['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
-                        df_nov['active'] = df_nov['active'].apply(lambda x: 'True' if x else 'False')
+                        if st.button("❌ Confirmar Exclusão Definitiva", type="secondary"):
+                            # Filtra mantendo apenas quem NÃO é o selecionado
+                            df_nov = df_users_notify[df_users_notify['username'] != sel_del].copy()
+                            
+                            # --- TRATAMENTO IGUAL AO DE SALVAR ---
+                            if 'data_inicio' in df_nov.columns:
+                                df_nov['data_inicio'] = df_nov['data_inicio'].apply(
+                                    lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) and x != "" else None
+                                )
+                            
+                            # Importante: O df_users_notify original (que usamos no filtro) 
+                            # já estava com 'active' como booleano por causa da preparação lá em cima.
+                            # Precisamos converter de volta para String antes de salvar.
+                            df_nov['active'] = df_nov['active'].apply(lambda x: 'True' if x is True else 'False')
 
-                        # ATUALIZA BANCO
-                        atualizar_tabela_completa(df_nov, "usuarios")
-                        st.success(f"Usuário {sel_del} excluído do Banco!")
-                        time.sleep(1)
-                        st.rerun()
+                            # Salva a nova tabela (agora sem o usuário excluído)
+                            atualizar_tabela_completa(df_nov, "usuarios")
+                            
+                            st.success(f"Usuário '{sel_del}' excluído do Banco!")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.info("Nenhum paciente encontrado para excluir.")
 
             st.markdown("---")
             
-            # FORMULÁRIO DE NOVO PACIENTE (CORRIGIDO)
-            st.markdown("##### Novo Paciente")
-            with st.form("add_user_form", clear_on_submit=False): # clear=False para debugarmos se precisar
+            # --- NOVO PACIENTE ---
+            st.markdown("##### Cadastrar Novo Paciente")
+            with st.form("add_user_form", clear_on_submit=False): 
                 c1, c2, c3 = st.columns(3)
-                # ADICIONEI KEY EM TODOS OS INPUTS
-                n = c1.text_input("Nome", key="novo_nome")
-                u = c2.text_input("Login", key="novo_login")
-                p = c3.text_input("Senha", key="novo_senha")
+                n = c1.text_input("Nome", key="cad_nome")
+                u = c2.text_input("Login (Usuário)", key="cad_user")
+                p = c3.text_input("Senha", key="cad_senha")
                 
                 c4, c5, c6 = st.columns(3)
-                t = c4.text_input("WhatsApp", key="novo_zap")
-                f = c5.selectbox("Frequência", ["Semanal", "Quinzenal"], key="novo_freq")
-                d_chk = c6.selectbox("Dia Check-in", ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"], key="novo_dia")
+                t = c4.text_input("WhatsApp", key="cad_zap")
+                f = c5.selectbox("Frequência", ["Semanal", "Quinzenal"], key="cad_freq")
+                d_chk = c6.selectbox("Dia Check-in", ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"], key="cad_dia")
                 
-                # Data de início padrão hoje
                 d_ini = date.today()
 
-                if st.form_submit_button("🚀 Criar Paciente"):
-                    # Verifica se preencheu os obrigatórios
+                if st.form_submit_button("🚀 Criar Paciente", type="primary"):
                     if u and p and n:
-                        # Verifica se login já existe (na memória atual)
-                        if not df_users_notify.empty and u.strip().lower() in df_users_notify['username'].str.lower().values:
+                        # Verifica duplicidade
+                        u_final = u.strip().lower()
+                        ja_existe = False
+                        if not df_users_notify.empty:
+                             ja_existe = u_final in df_users_notify['username'].str.lower().values
+                        
+                        if ja_existe:
                              st.error("Erro: Este Login já existe! Escolha outro.")
                         else:
                             novo_paciente = {
-                                "username": u.strip().lower(),
+                                "username": u_final,
                                 "password": p.strip(),
                                 "name": n.strip(),
                                 "role": "paciente",
-                                "active": "True",
+                                "active": "True", # Salva direto como string
                                 "telefone": str(t),
                                 "dia_checkin": d_chk,
                                 "frequencia": f,
                                 "data_inicio": str(d_ini)
                             } 
-                            # SALVA NOVO REGISTRO NO BANCO
                             if salvar_novo_registro(novo_paciente, "usuarios"):
                                 st.success(f"Paciente {n} criado com sucesso!")
                                 time.sleep(1)
