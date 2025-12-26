@@ -428,79 +428,111 @@ def show_admin():
     # --- ABA 3: PACIENTES ---
     with tab_user:
             st.subheader("Gestão de Pacientes")
+            
+            # TABELA EDITÁVEL
             if not df_users_notify.empty:
-                # Conversões para edição segura
+                # Tratamento de datas e booleanos para não quebrar o editor
                 if 'data_inicio' in df_users_notify.columns:
                     df_users_notify['data_inicio'] = pd.to_datetime(df_users_notify['data_inicio'], errors='coerce')
                 
-                df_users_notify['active'] = df_users_notify['active'].astype(str).map({'True':True, 'False':False, 'true':True, 'false':False, '1':True, '0':False}).fillna(True)
+                # Garante que 'active' é booleano para o checkbox funcionar
+                df_users_notify['active'] = df_users_notify['active'].astype(str).str.lower().isin(['true', '1', 'yes', 'on'])
             
                 df_ed = st.data_editor(
                     df_users_notify,
                     column_config={
-                        "active": st.column_config.CheckboxColumn("Ativo?"),
+                        "active": st.column_config.CheckboxColumn("Ativo?", default=True),
                         "username": st.column_config.TextColumn("Login", disabled=True),
                         "role": st.column_config.SelectboxColumn("Cargo", options=["admin", "paciente"]),
-                        "telefone": st.column_config.TextColumn("WhatsApp"),
-                        "dia_checkin": st.column_config.SelectboxColumn("Dia", options=["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]),
-                        "frequencia": st.column_config.SelectboxColumn("Plano", options=["Semanal", "Quinzenal"]),
                         "data_inicio": st.column_config.DateColumn("Início", format="YYYY-MM-DD")
                     },
-                    hide_index=True, num_rows="fixed", use_container_width=True
+                    hide_index=True, num_rows="fixed", use_container_width=True,
+                    key="editor_usuarios" # Key única para não perder estado
                 )
-                if st.button("💾 Salvar Alterações"):
+                
+                if st.button("💾 Salvar Alterações na Tabela", type="primary"):
+                    # Converte data de volta para string antes de salvar no banco
                     if 'data_inicio' in df_ed.columns:
                         df_ed['data_inicio'] = df_ed['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+                    
+                    # Converte booleano de volta para string 'True'/'False' pro banco
+                    df_ed['active'] = df_ed['active'].apply(lambda x: 'True' if x else 'False')
+
                     # SALVA NO BANCO
                     atualizar_tabela_completa(df_ed, "usuarios")
                     st.success("✅ Banco de Dados atualizado com sucesso!")
+                    time.sleep(1)
                     st.rerun()
 
+            # EXCLUSÃO DE PACIENTE
             with st.expander("🗑️ Excluir Paciente"):
                 if not df_users_notify.empty:
-                    sel_del = st.selectbox("Excluir quem?", df_users_notify[df_users_notify['role']=='paciente']['username'].unique())
-                    if st.button("❌ Confirmar Exclusão"):
-                        df_nov = df_users_notify[df_users_notify['username'] != sel_del]
+                    # Lista apenas pacientes
+                    lista_pacs = df_users_notify[df_users_notify['role']=='paciente']['username'].unique() if 'role' in df_users_notify.columns else []
+                    
+                    sel_del = st.selectbox("Excluir quem?", lista_pacs, key="select_delete")
+                    
+                    if st.button("❌ Confirmar Exclusão", key="btn_delete"):
+                        # Cria novo DF sem o usuário deletado
+                        df_nov = df_users_notify[df_users_notify['username'] != sel_del].copy()
+                        
+                        # Tratamento de dados antes de salvar
                         if 'data_inicio' in df_nov.columns:
                             df_nov['data_inicio'] = df_nov['data_inicio'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+                        df_nov['active'] = df_nov['active'].apply(lambda x: 'True' if x else 'False')
+
                         # ATUALIZA BANCO
                         atualizar_tabela_completa(df_nov, "usuarios")
                         st.success(f"Usuário {sel_del} excluído do Banco!")
+                        time.sleep(1)
                         st.rerun()
 
             st.markdown("---")
+            
+            # FORMULÁRIO DE NOVO PACIENTE (CORRIGIDO)
             st.markdown("##### Novo Paciente")
-            with st.form("add_user"):
+            with st.form("add_user_form", clear_on_submit=False): # clear=False para debugarmos se precisar
                 c1, c2, c3 = st.columns(3)
-                n = c1.text_input("Nome")
-                u = c2.text_input("Login")
-                p = c3.text_input("Senha")
+                # ADICIONEI KEY EM TODOS OS INPUTS
+                n = c1.text_input("Nome", key="novo_nome")
+                u = c2.text_input("Login", key="novo_login")
+                p = c3.text_input("Senha", key="novo_senha")
+                
                 c4, c5, c6 = st.columns(3)
-                t = c4.text_input("WhatsApp")
-                f = c5.selectbox("Frequência", ["Semanal", "Quinzenal"])
-                d_ini = c6.date_input("Início", date.today())
-                d_chk = st.selectbox("Dia Check-in", ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"])
-                if st.form_submit_button("Criar Paciente"):
+                t = c4.text_input("WhatsApp", key="novo_zap")
+                f = c5.selectbox("Frequência", ["Semanal", "Quinzenal"], key="novo_freq")
+                d_chk = c6.selectbox("Dia Check-in", ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"], key="novo_dia")
+                
+                # Data de início padrão hoje
+                d_ini = date.today()
+
+                if st.form_submit_button("🚀 Criar Paciente"):
+                    # Verifica se preencheu os obrigatórios
                     if u and p and n:
-                        novo_paciente = {
-                           "username": u.strip().lower(),
-                            "password": p.strip(),
-                            "name": n.strip(),
-                            "role": "paciente",
-                            "active": "True",
-                            "telefone": str(t),
-                            "dia_checkin": d_chk,
-                            "frequencia": f,
-                            "data_inicio": str(d_ini)
-                        } 
-                        # SALVA NOVO REGISTRO NO BANCO
-                        if salvar_novo_registro(novo_paciente, "usuarios"):
-                            st.success(f"Paciente {n} criado com sucesso!")
-                            st.rerun()
+                        # Verifica se login já existe (na memória atual)
+                        if not df_users_notify.empty and u.strip().lower() in df_users_notify['username'].str.lower().values:
+                             st.error("Erro: Este Login já existe! Escolha outro.")
                         else:
-                            st.error("Erro: Login já existe.")    
-                else:
-                    st.warning("Preencha Nome, Login e Senha")
+                            novo_paciente = {
+                                "username": u.strip().lower(),
+                                "password": p.strip(),
+                                "name": n.strip(),
+                                "role": "paciente",
+                                "active": "True",
+                                "telefone": str(t),
+                                "dia_checkin": d_chk,
+                                "frequencia": f,
+                                "data_inicio": str(d_ini)
+                            } 
+                            # SALVA NOVO REGISTRO NO BANCO
+                            if salvar_novo_registro(novo_paciente, "usuarios"):
+                                st.success(f"Paciente {n} criado com sucesso!")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("Erro ao conectar com o Banco de Dados.")    
+                    else:
+                        st.warning("Preencha Nome, Login e Senha para continuar.")
 
     # --- ABA 4: EDITOR (Mantém CSV) ---
     with tab_editor:
