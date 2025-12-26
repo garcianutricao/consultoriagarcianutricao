@@ -5,6 +5,7 @@ import altair as alt
 import requests
 import time
 from datetime import datetime, timedelta, date
+from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
 
 # --- CONFIGURAÇÃO DE ARQUIVOS ---
 ARQUIVO_USUARIOS = "data/usuarios.csv"
@@ -17,6 +18,63 @@ ARQUIVO_BELISCADAS = "data/beliscadas.csv"
 PASTA_EBOOKS = "assets/ebooks"
 
 LINK_PLATAFORMA = "https://seu-app-nutricao.streamlit.app" 
+
+def exibir_visao_admin():
+    st.title("👨‍⚕️ Painel do Nutricionista")
+    
+    # Criamos abas para organizar
+    tab1, tab2 = st.tabs(["📊 Monitoramento", "➕ Cadastrar Paciente"])
+    
+    with tab1:
+        # ... AQUI FICA O TEU CÓDIGO ANTIGO DE GRÁFICOS/BELISCADAS ...
+        st.write("Aqui vai a tua revisão de beliscadas atual.")
+
+    with tab2:
+        st.subheader("Cadastrar Novo Paciente")
+        with st.form("form_cadastro_paciente", clear_on_submit=True):
+            nome = st.text_input("Nome Completo")
+            usuario = st.text_input("Usuário (Login/Email)")
+            senha = st.text_input("Senha Provisória")
+            
+            if st.form_submit_button("🚀 Cadastrar Paciente"):
+                novo_paciente = {
+                    "username": usuario,
+                    "password": senha,
+                    "name": nome,
+                    "role": "paciente", # Importante definir como paciente
+                    "active": "True",
+                    "data_inicio": "2026-01-01"
+                }
+                
+                # Salva no PostgreSQL
+                if salvar_novo_registro(novo_paciente, "usuarios"):
+                    st.success(f"Paciente {nome} cadastrado com sucesso!")
+                else:
+                    st.error("Erro ao cadastrar. O login já pode existir.")
+
+    st.divider()
+    st.subheader("🕵️ Lista de Usuários no Banco")
+    
+    # Carrega e mostra a tabela crua do banco
+    df_users = carregar_dados("usuarios")
+    if not df_users.empty:
+        # Mostra senha também por enquanto para debugares (depois tiramos!)
+        st.dataframe(df_users, use_container_width=True)
+    else:
+        st.warning("Nenhum usuário encontrado.")
+    st.divider()
+    st.subheader("🕵️ Raio-X dos Usuários (Debug)")
+    
+    # Carregamos a tabela crua do banco
+    df_debug = carregar_dados("usuarios")
+    
+    if not df_debug.empty:
+        # Mostra a tabela na tela para você conferir
+        st.dataframe(df_debug)
+        
+        st.warning("⚠️ Apague esta tabela depois que o sistema estiver estável!")
+    else:
+        st.error("A tabela de usuários está vazia ou não foi possível ler.")       
 
 # --- FUNÇÕES ÚTEIS ---
 def carregar_csv(caminho):
