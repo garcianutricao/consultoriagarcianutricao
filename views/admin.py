@@ -13,7 +13,6 @@ from database import carregar_dados, salvar_novo_registro, atualizar_tabela_comp
 # Mantemos apenas o que é arquivo físico ou configuração estática
 ARQUIVO_PERGUNTAS = "data/perguntas_checkin.csv"
 PASTA_EBOOKS = "assets/ebooks"
-
 LINK_PLATAFORMA = "https://seu-app-nutricao.streamlit.app" 
 
 # --- FUNÇÕES ÚTEIS MANTIDAS/ADAPTADAS ---
@@ -576,28 +575,91 @@ def show_admin():
 
     # --- ABA 5: CONTEÚDO (Misto: Ebooks Local / Parceiros DB) ---
     with tab_cont:
-        st.subheader("Ebooks")
-        garantir_pasta_ebooks()
-        up = st.file_uploader("Upload PDF", type="pdf")
-        if up:
-            with open(os.path.join(PASTA_EBOOKS, up.name), "wb") as f: f.write(up.getbuffer())
-            st.success("Salvo!")
-        if os.path.exists(PASTA_EBOOKS):
-            for arq in os.listdir(PASTA_EBOOKS):
-                if arq.endswith(".pdf"):
-                    c1, c2 = st.columns([4,1])
-                    c1.text(f"📄 {arq}")
-                    if c2.button("🗑️", key=f"del_{arq}"): os.remove(os.path.join(PASTA_EBOOKS, arq)); st.rerun()
-        st.divider()
-        st.subheader("Parceiros")
-        # PARCEIROS NO BANCO
-        df_parc = carregar_dados("parceiros")
-        if df_parc.empty: df_parc = pd.DataFrame(columns=["nome", "desconto", "link"])
-        df_ped = st.data_editor(df_parc, num_rows="dynamic")
-        if st.button("Salvar Parceiros"): 
-            atualizar_tabela_completa(df_ped, "parceiros")
-            st.success("Salvo no Banco!")
+            st.subheader("📚 Gestão de Ebooks")
+            garantir_pasta_ebooks()
+            up = st.file_uploader("Upload PDF", type="pdf")
+            if up:
+                with open(os.path.join(PASTA_EBOOKS, up.name), "wb") as f: f.write(up.getbuffer())
+                st.success("Salvo!")
+                st.rerun()
+                
+            if os.path.exists(PASTA_EBOOKS):
+                for arq in os.listdir(PASTA_EBOOKS):
+                    if arq.endswith(".pdf"):
+                        c1, c2 = st.columns([4,1])
+                        c1.text(f"📄 {arq}")
+                        if c2.button("🗑️", key=f"del_{arq}"): os.remove(os.path.join(PASTA_EBOOKS, arq)); st.rerun()
+            
+            st.divider()
+            st.subheader("🤝 Gestão de Parceiros & Cupons")
+            
+            # 1. FORMULÁRIO DE ADIÇÃO
+            with st.expander("➕ Adicionar Novo Parceiro"):
+                with st.form("form_add_parceiro", clear_on_submit=True):
+                    c1, c2 = st.columns(2)
+                    nome_p = c1.text_input("Nome da Loja")
+                    desc_p = c2.text_input("Desconto (Ex: 10% OFF)")
+                    
+                    c3, c4 = st.columns(2)
+                    cupom_p = c3.text_input("Código do Cupom")
+                    link_p = c4.text_input("Link do Site")
+                    
+                    if st.form_submit_button("Salvar Parceiro"):
+                        if nome_p:
+                            novo_parc = {
+                                "nome": nome_p,
+                                "desconto": desc_p,
+                                "cupom": cupom_p,
+                                "link": link_p,
+                                "ativo": "True"
+                            }
+                            salvar_novo_registro(novo_parc, "parceiros")
+                            st.success("Parceiro adicionado com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.warning("O nome do parceiro é obrigatório.")
 
+            # 2. TABELA DE EDIÇÃO
+            df_parc = carregar_dados("parceiros")
+            
+            # Garante estrutura mínima
+            if df_parc.empty:
+                df_parc = pd.DataFrame(columns=["nome", "desconto", "cupom", "link", "ativo"])
+            else:
+                # Limpeza de possíveis sujeiras ({}) do banco
+                for col in ["nome", "desconto", "cupom", "link"]:
+                    if col in df_parc.columns:
+                        df_parc[col] = df_parc[col].astype(str).str.replace(r'{|}', '', regex=True)
+
+            # Configura Tipagem para Edição
+            if 'ativo' in df_parc.columns:
+                df_parc['ativo'] = df_parc['ativo'].astype(str).str.lower().isin(['true', '1', 'yes', 'on'])
+
+            st.write("📋 Lista de Parceiros (Edite direto na tabela)")
+            df_parc_ed = st.data_editor(
+                df_parc,
+                column_config={
+                    "nome": st.column_config.TextColumn("Nome"),
+                    "desconto": st.column_config.TextColumn("Desconto"),
+                    "cupom": st.column_config.TextColumn("Cupom"),
+                    "link": st.column_config.LinkColumn("Link"),
+                    "ativo": st.column_config.CheckboxColumn("Ativo?", default=True)
+                },
+                num_rows="dynamic",
+                use_container_width=True,
+                key="editor_parceiros_tab"
+            )
+            
+            if st.button("💾 Salvar Alterações de Parceiros"):
+                # Converte booleano de volta para string antes de salvar
+                if 'ativo' in df_parc_ed.columns:
+                    df_parc_ed['ativo'] = df_parc_ed['ativo'].apply(lambda x: 'True' if x is True else 'False')
+                
+                atualizar_tabela_completa(df_parc_ed, "parceiros")
+                st.success("Lista de parceiros atualizada no Banco!")
+                time.sleep(1)
+                st.rerun()
     # --- ABA 6: AULAS (NO BANCO) ---
     with tab_vid:
         st.subheader("Aulas")
