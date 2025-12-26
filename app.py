@@ -158,7 +158,7 @@ if not st.session_state["logado"]:
             st.markdown("<h1 style='text-align: center; font-size: 5rem;'>GN</h1>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### Área de membros")
+        st.markdown("### Consultoria Garcia Nutrição - Área de membros")
         
         with st.form("login_form"):
             u = st.text_input("Usuário")
