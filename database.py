@@ -7,19 +7,28 @@ from sqlalchemy import create_engine, text
 # ===================================================
 
 # Pega o link secreto lá do .streamlit/secrets.toml (Local) ou da Nuvem
-DATABASE_URL = st.secrets.get("DATABASE_URL")
-
-# Correção necessária para o SQLAlchemy (O Railway usa 'postgres://' mas o Python quer 'postgresql://')
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-# Cria o motor de conexão
-engine = None
-if DATABASE_URL:
+@st.cache_resource
+def get_db_engine():
+    """
+    Cria a conexão com o banco UMA VEZ e reaproveita.
+    Isso evita o 'lag' de conectar no Railway toda hora.
+    """
+    db_url = st.secrets.get("DATABASE_URL")
+    
+    if db_url and db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    if not db_url:
+        return None
+        
     try:
-        engine = create_engine(DATABASE_URL)
+        return create_engine(db_url)
     except Exception as e:
-        st.error(f"Erro ao conectar no banco de dados: {e}")
+        st.error(f"Erro de conexão: {e}")
+        return None
+
+# Inicializa o motor usando o cache
+engine = get_db_engine()
 
 # ===================================================
 # 2. FUNÇÕES DE LEITURA E ESCRITA

@@ -251,16 +251,38 @@ else:
     # --- ROTEAMENTO ---
     # ADMIN
     if st.session_state["role"] == "admin":
-        if menu == "Painel Admin": admin.show_admin()
-        elif menu == "💰 Financeiro": financeiro.show_financeiro()
-        elif menu == "Visualizar Check-in": checkin.show_checkin()
-        elif menu == "Monitorar beliscadas": monitoramento.show_monitoramento()
-        elif menu == "📢 Enviar Avisos": show_enviar_avisos()
+            if menu == "Painel Admin":
+                import views.admin as admin
+                admin.show_admin()
+            elif menu == "💰 Financeiro":
+                import views.financeiro as financeiro
+                financeiro.show_financeiro()
+            elif menu == "Visualizar Check-in":
+                import views.checkin as checkin
+                checkin.show_checkin()
+            elif menu == "Monitorar beliscadas":
+                import views.monitoramento as monitoramento
+                monitoramento.show_monitoramento()
+            elif menu == "📢 Enviar Avisos":
+                from views.avisos_admin import show_enviar_avisos
+                show_enviar_avisos()
     
-    # PACIENTE
-    elif menu == "🏠 Início": home.show_home()
-    elif menu == "📝 Check-in": checkin.show_checkin()
-    elif menu == "🍫 Beliscadas": monitoramento.show_monitoramento()
-    elif "Calculadora" in menu: calculadora.show_calculadora()
-    elif "Biblioteca" in menu: biblioteca.show_biblioteca()
-    elif "Perfil" in menu: perfil.show_perfil()
+    else: # PACIENTE
+        if menu == "🏠 Início":
+            import views.home as home
+            home.show_home()
+        elif menu == "📝 Check-in":
+            import views.checkin as checkin
+            checkin.show_checkin()
+        elif menu == "🍫 Beliscadas":
+            import views.monitoramento as monitoramento
+            monitoramento.show_monitoramento()
+        elif "Calculadora" in menu:
+            import views.calculadora as calculadora
+            calculadora.show_calculadora()
+        elif "Biblioteca" in menu:
+            import views.biblioteca as biblioteca
+            biblioteca.show_biblioteca()
+        elif "Perfil" in menu:
+            import views.perfil as perfil
+            perfil.show_perfil()
