@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta, date
 # IMPORTS DO BANCO DE DADOS
 from database import carregar_dados, salvar_novo_registro, atualizar_tabela_completa
+from streamlit import fragment
 
 # --- CONFIGURAÇÃO DE ARQUIVOS ---
 # Removemos os CSVs que agora são tabelas do banco
