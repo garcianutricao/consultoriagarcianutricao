@@ -104,6 +104,19 @@ def configurar_estilo_visual():
         </style>
     """, unsafe_allow_html=True)
 
+    if st.session_state["role"] != "admin":
+        base_css += """
+            <style>
+            #MainMenu {visibility: hidden;} /* Esconde os 3 pontinhos */
+            header {visibility: hidden;}    /* Esconde a barra superior colorida */
+            footer {visibility: hidden;}    /* Esconde 'Made with Streamlit' */
+            [data-testid="stToolbar"] {visibility: hidden;} /* Esconde Share/Star */
+            .stDeployButton {display:none;} /* Tenta esconder botão de deploy */
+            </style>
+        """
+    
+    st.markdown(base_css, unsafe_allow_html=True)
+    
 configurar_estilo_visual()
 
 # =======================================================
