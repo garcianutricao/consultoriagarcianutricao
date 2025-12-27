@@ -103,7 +103,7 @@ def configurar_estilo_visual():
         [data-testid="stForm"] { border: none; padding: 0; }
         </style>
     """, unsafe_allow_html=True)
-    
+
 configurar_estilo_visual()
 
 # =======================================================
